@@ -1,0 +1,9 @@
+{
+  "frequency": "every_x_minutes",
+  "time": "09:00",
+  "days": [
+    "5"
+  ],
+  "enabled": true,
+  "last_updated": "2025-08-27T19:41:06.544361"
+}

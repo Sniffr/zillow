@@ -2,24 +2,153 @@
 Flask web application for Zillow Property Manager
 """
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
-from database_models import DatabaseManager, Property, SearchConfig, MessageTemplate, ScraperConfig, ScraperLog
+from database_models import DatabaseManager, Property, SearchConfig, MessageTemplate
 import subprocess
 import threading
 import os
 import json
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 import pandas as pd
-from scraper_scheduler import get_scheduler, start_scheduler, stop_scheduler
+import schedule
 
 app = Flask(__name__)
 app.secret_key = 'zillow_property_manager_secret_key_2024'
 
 # Global variable to track scraper status
-scraper_status = {
+scraper_status_data = {
     'running': False,
     'message': '',
-    'last_run': None
+    'last_run': None,
+    'next_run': None,
+    'total_runs': 0,
+    'successful_runs': 0,
+    'failed_runs': 0
 }
+
+# Scraper scheduler thread
+scheduler_thread = None
+scheduler_running = False
+
+def run_scraper_background():
+    """Run the scraper in the background"""
+    global scraper_status_data
+    
+    try:
+        scraper_status_data['running'] = True
+        scraper_status_data['message'] = 'Scraper started'
+        scraper_status_data['last_run'] = datetime.now()
+        scraper_status_data['total_runs'] += 1
+        
+        print(f"[{datetime.now()}] Starting scheduled scraper execution...")
+        
+        # Run the scraper script
+        result = subprocess.run(['python', 'get_listing_and_agent.py'], 
+                             capture_output=True, text=True, cwd=os.getcwd())
+        
+        if result.returncode == 0:
+            scraper_status_data['message'] = 'Scraper completed successfully'
+            scraper_status_data['successful_runs'] += 1
+            print(f"[{datetime.now()}] Scraper completed successfully")
+        else:
+            scraper_status_data['message'] = f'Scraper failed with error: {result.stderr}'
+            scraper_status_data['failed_runs'] += 1
+            print(f"[{datetime.now()}] Scraper failed: {result.stderr}")
+        
+    except Exception as e:
+        scraper_status_data['message'] = f'Error running scraper: {str(e)}'
+        scraper_status_data['failed_runs'] += 1
+        print(f"[{datetime.now()}] Error running scraper: {str(e)}")
+    finally:
+        scraper_status_data['running'] = False
+        # Schedule next run
+        schedule_next_run()
+
+def schedule_next_run():
+    """Schedule the next scraper run"""
+    global scraper_status_data
+    next_run = datetime.now() + timedelta(minutes=10)
+    scraper_status_data['next_run'] = next_run
+    print(f"[{datetime.now()}] Next scraper run scheduled for: {next_run}")
+
+def scheduler_worker():
+    """Background worker for the scheduler"""
+    global scheduler_running
+    
+    print(f"[{datetime.now()}] Scraper scheduler started")
+    
+    while scheduler_running:
+        try:
+            schedule.run_pending()
+            time.sleep(30)  # Check every 30 seconds
+        except Exception as e:
+            print(f"[{datetime.now()}] Scheduler error: {str(e)}")
+            time.sleep(60)  # Wait longer on error
+    
+    print(f"[{datetime.now()}] Scraper scheduler stopped")
+
+def start_scheduler():
+    """Start the scraper scheduler"""
+    global scheduler_thread, scheduler_running, scraper_status_data
+    
+    if scheduler_running:
+        print("Scheduler already running")
+        return
+    
+    # Schedule scraper to run every 10 minutes
+    schedule.every(10).minutes.do(run_scraper_background)
+    
+    # Start scheduler thread
+    scheduler_running = True
+    scheduler_thread = threading.Thread(target=scheduler_worker, daemon=True)
+    scheduler_thread.start()
+    
+    print(f"[{datetime.now()}] Scraper scheduler started - will run every 10 minutes")
+    
+    # Schedule first run
+    schedule_next_run()
+
+def stop_scheduler():
+    """Stop the scraper scheduler"""
+    global scheduler_running, scheduler_thread
+    
+    if not scheduler_running:
+        print("Scheduler not running")
+        return
+    
+    scheduler_running = False
+    if scheduler_thread and scheduler_thread.is_alive():
+        scheduler_thread.join(timeout=5)
+    
+    print(f"[{datetime.now()}] Scraper scheduler stopped")
+
+def initialize_app():
+    """Initialize the application on first request"""
+    print(f"[{datetime.now()}] Initializing Zillow Property Manager...")
+    
+    # Start the scraper scheduler
+    start_scheduler()
+    
+    # Run scraper immediately on startup
+    print(f"[{datetime.now()}] Running initial scraper execution...")
+    initial_thread = threading.Thread(target=run_scraper_background, daemon=True)
+    initial_thread.start()
+    
+    print(f"[{datetime.now()}] Application initialization complete")
+
+# Initialize the app when it's created
+def create_app():
+    """Create and configure the Flask application"""
+    initialize_app()
+    return app
+
+# Don't initialize here - it will be done when the app starts
+
+@app.teardown_appcontext
+def cleanup_app(exception=None):
+    """Cleanup when the application context is torn down"""
+    if exception:
+        print(f"[{datetime.now()}] Application error: {str(exception)}")
 
 @app.route('/')
 def index():
@@ -56,7 +185,7 @@ def index():
                          total_searches=total_searches,
                          properties_with_phones=properties_with_phones,
                          unique_phones=len(unique_phones),
-                         scraper_status=scraper_status)
+                         scraper_status=scraper_status_data)
 
 @app.route('/properties')
 def properties():
@@ -214,10 +343,7 @@ def send_messages():
     
     return redirect(url_for('index'))
 
-@app.route('/api/scraper_status')
-def api_scraper_status():
-    """Get current scraper status"""
-    return jsonify(scraper_status)
+# Removed duplicate route - see below for the complete implementation
 
 @app.route('/export_csv')
 def export_csv():
@@ -673,220 +799,230 @@ def api_get_message_template(template_id):
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error getting message template: {str(e)}'}), 500
 
-# Scraper Management Routes
-@app.route('/scraper_management')
-def scraper_management():
-    """Scraper management dashboard page"""
-    return render_template('scraper_management.html')
-
-@app.route('/api/scraper_config')
-def api_get_scraper_config():
-    """Get current scraper configuration"""
-    try:
-        db_manager = DatabaseManager()
-        config = db_manager.get_scraper_config()
-        
-        config_data = {
-            'id': config.id,
-            'is_enabled': bool(config.is_enabled),
-            'schedule_interval_minutes': config.schedule_interval_minutes,
-            'last_scheduled_run': config.last_scheduled_run.isoformat() if config.last_scheduled_run else None,
-            'next_scheduled_run': config.next_scheduled_run.isoformat() if config.next_scheduled_run else None,
-            'max_concurrent_workers': config.max_concurrent_workers,
-            'timeout_minutes': config.timeout_minutes,
-            'retry_attempts': config.retry_attempts,
-            'created_at': config.created_at.isoformat() if config.created_at else None,
-            'updated_at': config.updated_at.isoformat() if config.updated_at else None
-        }
-        
-        db_manager.close()
-        return jsonify({'success': True, 'data': config_data})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error getting scraper configuration: {str(e)}'}), 500
-
-@app.route('/api/scraper_config', methods=['PUT'])
-def api_update_scraper_config():
-    """Update scraper configuration"""
-    try:
-        data = request.get_json()
-        
-        # Validate required fields
-        if 'schedule_interval_minutes' in data:
-            interval = int(data['schedule_interval_minutes'])
-            if interval < 1 or interval > 1440:  # Between 1 minute and 24 hours
-                return jsonify({'success': False, 'message': 'Schedule interval must be between 1 and 1440 minutes'}), 400
-        
-        if 'timeout_minutes' in data:
-            timeout = int(data['timeout_minutes'])
-            if timeout < 1 or timeout > 120:  # Between 1 minute and 2 hours
-                return jsonify({'success': False, 'message': 'Timeout must be between 1 and 120 minutes'}), 400
-        
-        # Update configuration
-        scheduler = get_scheduler()
-        success = scheduler.update_config(data)
-        
-        if success:
-            return jsonify({'success': True, 'message': 'Scraper configuration updated successfully'})
-        else:
-            return jsonify({'success': False, 'message': 'Failed to update scraper configuration'}), 500
-        
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error updating scraper configuration: {str(e)}'}), 500
-
-@app.route('/api/scraper_logs')
-def api_get_scraper_logs():
-    """Get recent scraper logs"""
-    try:
-        db_manager = DatabaseManager()
-        logs = db_manager.get_scraper_logs(limit=50)
-        
-        # Convert to list of dictionaries for DataTable
-        data = []
-        for log in logs:
-            data.append({
-                'id': log.id,
-                'execution_id': log.execution_id,
-                'status': log.status.title(),
-                'start_time': log.start_time.strftime('%Y-%m-%d %H:%M:%S') if log.start_time else '',
-                'end_time': log.end_time.strftime('%Y-%m-%d %H:%M:%S') if log.end_time else '',
-                'total_searches': log.total_searches,
-                'successful_searches': log.successful_searches,
-                'total_properties': log.total_properties,
-                'properties_saved': log.properties_saved,
-                'error_message': log.error_message or '',
-                'duration': _calculate_duration(log.start_time, log.end_time),
-                'actions': f'''
-                    <button class="btn btn-sm btn-info" onclick="viewScraperLog('{log.execution_id}')">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="btn btn-sm btn-secondary" onclick="downloadScraperLog('{log.execution_id}')">
-                        <i class="fas fa-download"></i>
-                    </button>
-                '''
-            })
-        
-        db_manager.close()
-        
-        return jsonify({
-            'data': data
-        })
-        
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error getting scraper logs: {str(e)}'}), 500
-
-def _calculate_duration(start_time, end_time):
-    """Calculate duration between start and end times"""
-    if start_time and end_time:
-        duration = end_time - start_time
-        total_seconds = int(duration.total_seconds())
-        minutes = total_seconds // 60
-        seconds = total_seconds % 60
-        return f"{minutes}m {seconds}s"
-    elif start_time:
-        return "Running..."
-    return ""
-
-@app.route('/api/scraper_logs/<execution_id>')
-def api_get_scraper_log(execution_id):
-    """Get specific scraper log details and content"""
-    try:
-        db_manager = DatabaseManager()
-        log = db_manager.get_scraper_log_by_id(execution_id)
-        
-        if not log:
-            db_manager.close()
-            return jsonify({'success': False, 'message': 'Scraper log not found'}), 404
-        
-        # Get log file content if available
-        log_content = []
-        if log.log_file_path and os.path.exists(log.log_file_path):
-            try:
-                with open(log.log_file_path, 'r') as f:
-                    log_content = f.readlines()
-                    # Get last 100 lines
-                    log_content = log_content[-100:] if len(log_content) > 100 else log_content
-            except Exception as e:
-                log_content = [f"Error reading log file: {str(e)}"]
-        
-        log_data = {
-            'id': log.id,
-            'execution_id': log.execution_id,
-            'status': log.status,
-            'start_time': log.start_time.isoformat() if log.start_time else None,
-            'end_time': log.end_time.isoformat() if log.end_time else None,
-            'total_searches': log.total_searches,
-            'successful_searches': log.successful_searches,
-            'total_properties': log.total_properties,
-            'properties_saved': log.properties_saved,
-            'error_message': log.error_message,
-            'error_details': log.error_details,
-            'log_file_path': log.log_file_path,
-            'log_content': log_content,
-            'created_at': log.created_at.isoformat() if log.created_at else None
-        }
-        
-        db_manager.close()
-        return jsonify({'success': True, 'data': log_data})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error getting scraper log: {str(e)}'}), 500
-
-@app.route('/api/scraper_logs/<execution_id>/download')
-def api_download_scraper_log(execution_id):
-    """Download scraper log file"""
-    try:
-        db_manager = DatabaseManager()
-        log = db_manager.get_scraper_log_by_id(execution_id)
-        db_manager.close()
-        
-        if not log or not log.log_file_path or not os.path.exists(log.log_file_path):
-            return jsonify({'success': False, 'message': 'Log file not found'}), 404
-        
-        # Return file path for download
-        return jsonify({
-            'success': True, 
-            'file_path': log.log_file_path,
-            'filename': f'scraper_log_{execution_id}.log'
-        })
-        
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error downloading log: {str(e)}'}), 500
+@app.route('/scraper_status')
+def scraper_status():
+    """Scraper status page"""
+    return render_template('scraper_status.html')
 
 @app.route('/api/scraper_status')
-def api_get_scraper_status():
-    """Get current scraper and scheduler status"""
+def api_scraper_status():
+    """Get current scraper status and statistics"""
     try:
-        scheduler = get_scheduler()
-        status = scheduler.get_status()
+        db_manager = DatabaseManager()
         
-        # Add current scraper status
-        status['scraper_running'] = scraper_status['running']
-        status['scraper_message'] = scraper_status['message']
-        status['scraper_last_run'] = scraper_status['last_run'].isoformat() if scraper_status['last_run'] else None
+        # Get basic statistics
+        total_properties = len(db_manager.get_all_properties())
         
-        return jsonify({'success': True, 'data': status})
+        # Count log files
+        log_dir = 'logs'
+        log_file_count = 0
+        if os.path.exists(log_dir):
+            log_file_count = len([f for f in os.listdir(log_dir) if f.endswith('.log')])
+        
+        # Determine scraper status based on log files
+        status = 'Idle'
+        last_run = None
+        
+        if os.path.exists(log_dir):
+            log_files = [f for f in os.listdir(log_dir) if f.endswith('.log')]
+            if log_files:
+                # Get the most recent log file
+                latest_log = max(log_files, key=lambda x: os.path.getmtime(os.path.join(log_dir, x)))
+                latest_log_path = os.path.join(log_dir, latest_log)
+                
+                # Check if scraper is currently running by looking for "STARTED" vs "COMPLETED"
+                try:
+                    with open(latest_log_path, 'r') as f:
+                        content = f.read()
+                        if 'ZILLOW SCRAPER STARTED' in content and 'ZILLOW SCRAPER COMPLETED' not in content:
+                            # Check if it's an error by looking for specific error patterns
+                            if 'ZILLOW SCRAPER FAILED' in content or 'ERROR' in content.upper():
+                                status = 'Error'
+                            else:
+                                status = 'Running'
+                        elif 'ZILLOW SCRAPER COMPLETED' in content:
+                            status = 'Completed'
+                        elif 'ZILLOW SCRAPER FAILED' in content:
+                            status = 'Error'
+                        elif 'ERROR' in content.upper():
+                            status = 'Error'
+                        
+                        # Extract last run time
+                        lines = content.split('\n')
+                        for line in lines:
+                            if 'ZILLOW SCRAPER STARTED' in line:
+                                # Extract timestamp from the line
+                                if ' - ' in line:
+                                    timestamp_str = line.split(' - ')[0]
+                                    try:
+                                        last_run = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f').strftime('%Y-%m-%d %H:%M:%S')
+                                    except:
+                                        last_run = timestamp_str
+                                break
+                except Exception as e:
+                    print(f"Error reading log file: {e}")
+        
+        db_manager.close()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'status': status,
+                'last_run': last_run,
+                'total_properties': total_properties,
+                'log_file_count': log_file_count,
+                'scheduler_status': {
+                    'running': scraper_status_data['running'],
+                    'next_run': scraper_status_data['next_run'].strftime('%Y-%m-%d %H:%M:%S') if scraper_status_data['next_run'] else None,
+                    'total_runs': scraper_status_data['total_runs'],
+                    'successful_runs': scraper_status_data['successful_runs'],
+                    'failed_runs': scraper_status_data['failed_runs']
+                }
+            }
+        })
         
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error getting scraper status: {str(e)}'}), 500
 
-@app.route('/api/scraper/start', methods=['POST'])
-def api_start_scraper():
-    """Start the scraper manually"""
+@app.route('/api/log_files')
+def api_log_files():
+    """Get list of log files"""
     try:
-        scheduler = get_scheduler()
-        result = scheduler.run_now()
+        log_dir = 'logs'
+        log_files = []
         
-        if result['success']:
-            # Update global scraper status
-            global scraper_status
-            scraper_status['running'] = True
-            scraper_status['message'] = 'Scraper started manually'
-            scraper_status['last_run'] = datetime.now()
-            
-            return jsonify({'success': True, 'message': result['message']})
-        else:
-            return jsonify({'success': False, 'message': result['message']}), 400
+        if os.path.exists(log_dir):
+            for filename in os.listdir(log_dir):
+                if filename.endswith('.log'):
+                    filepath = os.path.join(log_dir, filename)
+                    file_stat = os.stat(filepath)
+                    
+                    # Determine status based on log content
+                    status = 'Unknown'
+                    try:
+                        with open(filepath, 'r') as f:
+                            content = f.read()
+                            if 'ZILLOW SCRAPER STARTED' in content and 'ZILLOW SCRAPER COMPLETED' not in content:
+                                # Check if it's an error by looking for specific error patterns
+                                if 'ZILLOW SCRAPER FAILED' in content or 'ERROR' in content.upper():
+                                    status = 'Error'
+                                else:
+                                    status = 'Running'
+                            elif 'ZILLOW SCRAPER COMPLETED' in content:
+                                status = 'Success'
+                            elif 'ZILLOW SCRAPER FAILED' in content:
+                                status = 'Error'
+                            elif 'ERROR' in content.upper():
+                                status = 'Error'
+                    except:
+                        status = 'Unknown'
+                    
+                    log_files.append({
+                        'filename': filename,
+                        'size': f"{file_stat.st_size / 1024:.1f} KB",
+                        'last_modified': datetime.fromtimestamp(file_stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                        'status': status,
+                        'actions': f'''
+                            <button class="btn btn-sm btn-primary" onclick="viewLogFile('{filename}')">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteLogFile('{filename}')">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        '''
+                    })
+        
+        # Sort by last modified date (newest first)
+        log_files.sort(key=lambda x: x['last_modified'], reverse=True)
+        
+        return jsonify({'success': True, 'data': log_files})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error getting log files: {str(e)}'}), 500
+
+@app.route('/api/log_files/<filename>/content')
+def api_log_file_content(filename):
+    """Get content of a specific log file"""
+    try:
+        # Security check to prevent directory traversal
+        if '..' in filename or '/' in filename:
+            return jsonify({'success': False, 'message': 'Invalid filename'}), 400
+        
+        log_dir = 'logs'
+        filepath = os.path.join(log_dir, filename)
+        
+        if not os.path.exists(filepath):
+            return jsonify({'success': False, 'message': 'Log file not found'}), 404
+        
+        with open(filepath, 'r') as f:
+            content = f.read()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'content': content,
+                'filename': filename
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error reading log file: {str(e)}'}), 500
+
+@app.route('/api/log_files/<filename>/download')
+def api_download_log_file(filename):
+    """Download a specific log file"""
+    try:
+        # Security check to prevent directory traversal
+        if '..' in filename or '/' in filename:
+            return jsonify({'success': False, 'message': 'Invalid filename'}), 400
+        
+        log_dir = 'logs'
+        filepath = os.path.join(log_dir, filename)
+        
+        if not os.path.exists(filepath):
+            return jsonify({'success': False, 'message': 'Log file not found'}), 404
+        
+        from flask import send_file
+        return send_file(filepath, as_attachment=True, download_name=filename)
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error downloading log file: {str(e)}'}), 500
+
+@app.route('/api/log_files/<filename>', methods=['DELETE'])
+def api_delete_log_file(filename):
+    """Delete a specific log file"""
+    try:
+        # Security check to prevent directory traversal
+        if '..' in filename or '/' in filename:
+            return jsonify({'success': False, 'message': 'Invalid filename'}), 400
+        
+        log_dir = 'logs'
+        filepath = os.path.join(log_dir, filename)
+        
+        if not os.path.exists(filepath):
+            return jsonify({'success': False, 'message': 'Log file not found'}), 404
+        
+        os.remove(filepath)
+        
+        return jsonify({'success': True, 'message': 'Log file deleted successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error deleting log file: {str(e)}'}), 500
+
+@app.route('/api/run_scraper', methods=['POST'])
+def api_run_scraper():
+    """Run the Zillow scraper manually"""
+    try:
+        # Check if scraper is already running
+        if scraper_status_data['running']:
+            return jsonify({'success': False, 'message': 'Scraper is already running'}), 400
+        
+        # Start scraper in background thread
+        thread = threading.Thread(target=run_scraper_background)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({'success': True, 'message': 'Scraper started successfully'})
         
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error starting scraper: {str(e)}'}), 500
@@ -895,8 +1031,12 @@ def api_start_scraper():
 def api_start_scheduler():
     """Start the scraper scheduler"""
     try:
+        if scheduler_running:
+            return jsonify({'success': False, 'message': 'Scheduler is already running'}), 400
+        
         start_scheduler()
         return jsonify({'success': True, 'message': 'Scheduler started successfully'})
+        
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error starting scheduler: {str(e)}'}), 500
 
@@ -904,17 +1044,34 @@ def api_start_scheduler():
 def api_stop_scheduler():
     """Stop the scraper scheduler"""
     try:
+        if not scheduler_running:
+            return jsonify({'success': False, 'message': 'Scheduler is not running'}), 400
+        
         stop_scheduler()
         return jsonify({'success': True, 'message': 'Scheduler stopped successfully'})
+        
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error stopping scheduler: {str(e)}'}), 500
 
-if __name__ == '__main__':
-    # Start the scraper scheduler
+@app.route('/api/scheduler/status')
+def api_scheduler_status():
+    """Get scheduler status"""
     try:
-        start_scheduler()
-        print("Scraper scheduler started successfully")
+        return jsonify({
+            'success': True,
+            'data': {
+                'running': scheduler_running,
+                'next_run': scraper_status_data['next_run'].strftime('%Y-%m-%d %H:%M:%S') if scraper_status_data['next_run'] else None,
+                'total_runs': scraper_status_data['total_runs'],
+                'successful_runs': scraper_status_data['successful_runs'],
+                'failed_runs': scraper_status_data['failed_runs']
+            }
+        })
+        
     except Exception as e:
-        print(f"Warning: Could not start scraper scheduler: {str(e)}")
-    
+        return jsonify({'success': False, 'message': f'Error getting scheduler status: {str(e)}'}), 500
+
+if __name__ == '__main__':
+    # Initialize the app before running
+    initialize_app()
     app.run(debug=True, host='0.0.0.0', port=5001)
