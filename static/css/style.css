@@ -1,0 +1,416 @@
+/* Custom styles for Zillow Property Manager */
+
+/* General styles */
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Navigation */
+.navbar-brand {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+.navbar-nav .nav-link {
+    font-weight: 500;
+}
+
+/* Cards */
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    font-weight: 600;
+}
+
+/* Statistics cards */
+.card.bg-primary, .card.bg-success, .card.bg-info, .card.bg-warning {
+    border: none;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+}
+
+.card.bg-primary:hover, .card.bg-success:hover, .card.bg-info:hover, .card.bg-warning:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Buttons */
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.btn-success {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.btn-info {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+}
+
+.btn-warning {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #212529;
+}
+
+/* DataTable customization */
+.dataTables_wrapper .dataTables_length select,
+.dataTables_wrapper .dataTables_filter input {
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    padding: 0.375rem 0.75rem;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    border-radius: 4px;
+    margin: 0 2px;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: #007bff;
+    border-color: #007bff;
+    color: white !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: #0056b3;
+    border-color: #0056b3;
+    color: white !important;
+}
+
+/* Table styles */
+.table {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.table thead th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: #495057;
+}
+
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Modal customization */
+.modal-content {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.modal-title {
+    font-weight: 600;
+}
+
+/* Alert customization */
+.alert {
+    border: none;
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.alert-danger {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+/* Badge customization */
+.badge {
+    font-size: 0.875em;
+    padding: 0.5em 0.75em;
+}
+
+/* Form controls */
+.form-control, .form-select {
+    border-radius: 6px;
+    border: 1px solid #ced4da;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+    
+    .btn {
+        font-size: 0.875rem;
+        padding: 0.375rem 0.75rem;
+    }
+    
+    .navbar-brand {
+        font-size: 1.25rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .container {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+    
+    .card {
+        margin-bottom: 1rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.8rem;
+    }
+}
+
+/* Loading spinner */
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Property detail modal specific styles */
+.property-detail-modal .card {
+    margin-bottom: 1rem;
+}
+
+.property-detail-modal .list-unstyled li {
+    padding: 0.25rem 0;
+}
+
+.property-detail-modal .text-break {
+    word-break: break-word;
+}
+
+/* DataTable responsive adjustments */
+.dtr-bs-modal .modal-body {
+    padding: 1rem;
+}
+
+.dtr-bs-modal .dtr-details {
+    width: 100%;
+}
+
+.dtr-bs-modal .dtr-title {
+    font-weight: 600;
+    color: #495057;
+}
+
+/* Custom animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+/* Status indicators */
+.status-running {
+    color: #007bff;
+}
+
+.status-success {
+    color: #28a745;
+}
+
+.status-error {
+    color: #dc3545;
+}
+
+/* Phone number styling */
+.phone-number {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+}
+
+/* Search term filter */
+.search-term-filter {
+    margin-bottom: 1rem;
+}
+
+.search-term-filter select {
+    max-width: 300px;
+}
+
+/* Export button styling */
+.export-btn {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    border: none;
+    color: white;
+    font-weight: 600;
+}
+
+.export-btn:hover {
+    background: linear-gradient(45deg, #218838, #1ea085);
+    color: white;
+    transform: translateY(-2px);
+}
+
+/* Scraper status styling */
+.scraper-status {
+    border-left: 4px solid #007bff;
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0 8px 8px 0;
+}
+
+.scraper-status.running {
+    border-left-color: #ffc107;
+    background-color: #fff3cd;
+}
+
+.scraper-status.success {
+    border-left-color: #28a745;
+    background-color: #d4edda;
+}
+
+.scraper-status.error {
+    border-left-color: #dc3545;
+    background-color: #f8d7da;
+}
+
+/* Toast styling */
+.toast-container {
+    z-index: 9999;
+}
+
+.toast {
+    min-width: 300px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: none;
+    border-radius: 8px;
+}
+
+.toast-header {
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    font-weight: 600;
+}
+
+.toast-header .btn-close {
+    filter: brightness(0) invert(1);
+}
+
+.toast-body {
+    padding: 1rem;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+/* Toast type-specific styling */
+.toast .bg-success {
+    background-color: #28a745 !important;
+}
+
+.toast .bg-danger {
+    background-color: #dc3545 !important;
+}
+
+.toast .bg-warning {
+    background-color: #ffc107 !important;
+    color: #212529 !important;
+}
+
+.toast .bg-primary {
+    background-color: #007bff !important;
+}
+
+.toast .bg-info {
+    background-color: #17a2b8 !important;
+}
+
+/* Toast animations */
+.toast.fade {
+    transition: opacity 0.15s linear;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
+/* Responsive toast adjustments */
+@media (max-width: 576px) {
+    .toast-container {
+        right: 0.5rem !important;
+        left: 0.5rem !important;
+    }
+    
+    .toast {
+        min-width: auto;
+        width: 100%;
+    }
+}

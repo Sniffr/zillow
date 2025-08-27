@@ -1,0 +1,207 @@
+<div class="row">
+    <div class="col-12">
+        <h4 class="mb-3">
+            <i class="fas fa-home"></i> {{ property.address }}
+        </h4>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Basic Property Information -->
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-info-circle"></i> Basic Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td><strong>Price:</strong></td>
+                        <td><span class="badge bg-success">{{ property.price }}</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Status:</strong></td>
+                        <td><span class="badge bg-primary">{{ property.sold_by }}</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Search Term:</strong></td>
+                        <td>{{ property.search_term }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Created:</strong></td>
+                        <td>{{ property.created_at.strftime('%Y-%m-%d %H:%M:%S') if property.created_at else 'N/A' }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>URL:</strong></td>
+                        <td><a href="{{ property.url }}" target="_blank" class="btn btn-sm btn-outline-primary">View on Zillow</a></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Information -->
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-phone"></i> Contact Information
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if property.attribution_agent_name or property.attribution_agent_email or property.attribution_agent_phone_number %}
+                <h6 class="text-primary">Primary Agent</h6>
+                <ul class="list-unstyled">
+                    {% if property.attribution_agent_name %}
+                    <li><i class="fas fa-user"></i> <strong>Name:</strong> {{ property.attribution_agent_name }}</li>
+                    {% endif %}
+                    {% if property.attribution_agent_email %}
+                    <li><i class="fas fa-envelope"></i> <strong>Email:</strong> <a href="mailto:{{ property.attribution_agent_email }}">{{ property.attribution_agent_email }}</a></li>
+                    {% endif %}
+                    {% if property.attribution_agent_phone_number %}
+                    <li><i class="fas fa-phone"></i> <strong>Phone:</strong> <a href="tel:{{ property.attribution_agent_phone_number }}">{{ property.attribution_agent_phone_number }}</a></li>
+                    {% endif %}
+                    {% if property.attribution_agent_license_number %}
+                    <li><i class="fas fa-id-card"></i> <strong>License:</strong> {{ property.attribution_agent_license_number }}</li>
+                    {% endif %}
+                </ul>
+                {% endif %}
+
+                {% if property.attribution_broker_name or property.attribution_broker_phone_number %}
+                <hr>
+                <h6 class="text-info">Broker</h6>
+                <ul class="list-unstyled">
+                    {% if property.attribution_broker_name %}
+                    <li><i class="fas fa-building"></i> <strong>Name:</strong> {{ property.attribution_broker_name }}</li>
+                    {% endif %}
+                    {% if property.attribution_broker_phone_number %}
+                    <li><i class="fas fa-phone"></i> <strong>Phone:</strong> <a href="tel:{{ property.attribution_broker_phone_number }}">{{ property.attribution_broker_phone_number }}</a></li>
+                    {% endif %}
+                </ul>
+                {% endif %}
+
+                {% if property.attribution_co_agent_name or property.attribution_co_agent_number %}
+                <hr>
+                <h6 class="text-warning">Co-Agent</h6>
+                <ul class="list-unstyled">
+                    {% if property.attribution_co_agent_name %}
+                    <li><i class="fas fa-user"></i> <strong>Name:</strong> {{ property.attribution_co_agent_name }}</li>
+                    {% endif %}
+                    {% if property.attribution_co_agent_number %}
+                    <li><i class="fas fa-phone"></i> <strong>Phone:</strong> <a href="tel:{{ property.attribution_co_agent_number }}">{{ property.attribution_co_agent_number }}</a></li>
+                    {% endif %}
+                    {% if property.attribution_co_agent_license_number %}
+                    <li><i class="fas fa-id-card"></i> <strong>License:</strong> {{ property.attribution_co_agent_license_number }}</li>
+                    {% endif %}
+                </ul>
+                {% endif %}
+
+                {% if not (property.attribution_agent_name or property.attribution_broker_name or property.attribution_co_agent_name) %}
+                <p class="text-muted">No contact information available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MLS Information -->
+{% if property.attribution_mls_name or property.attribution_mls_id %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-database"></i> MLS Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% if property.attribution_mls_name %}
+                    <div class="col-md-6">
+                        <strong>MLS Name:</strong> {{ property.attribution_mls_name }}
+                    </div>
+                    {% endif %}
+                    {% if property.attribution_mls_id %}
+                    <div class="col-md-6">
+                        <strong>MLS ID:</strong> {{ property.attribution_mls_id }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% if property.attribution_mls_disclaimer %}
+                <hr>
+                <small class="text-muted">{{ property.attribution_mls_disclaimer }}</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Additional Attribution Data -->
+{% if attribution_data %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="fas fa-cogs"></i> Additional Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for field_name, value in attribution_data.items() %}
+                    {% if field_name not in ['Agent Name', 'Agent Email', 'Agent Phone Number', 'Agent License Number', 'Broker Name', 'Broker Phone Number', 'Co Agent Name', 'Co Agent Number', 'Co Agent License Number', 'Mls Name', 'Mls Id', 'Mls Disclaimer'] %}
+                    <div class="col-md-6 mb-2">
+                        <strong>{{ field_name }}:</strong>
+                        {% if value|length > 100 %}
+                            <div class="text-break">{{ value[:100] }}...</div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleFullText(this, '{{ value|replace("'", "\\'")|replace('"', '\\"') }}')">Show More</button>
+                        {% else %}
+                            <div class="text-break">{{ value }}</div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Action Buttons -->
+<div class="row mt-3">
+    <div class="col-12 text-center">
+        <button class="btn btn-success me-2" onclick="sendMessageToProperty({{ property.id }})">
+            <i class="fas fa-comment"></i> Send Message
+        </button>
+        <button class="btn btn-primary me-2" onclick="window.open('{{ property.url }}', '_blank')">
+            <i class="fas fa-external-link-alt"></i> View on Zillow
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="fas fa-times"></i> Close
+        </button>
+    </div>
+</div>
+
+<script>
+function toggleFullText(button, fullText) {
+    const textDiv = button.previousElementSibling;
+    if (button.textContent === 'Show More') {
+        textDiv.textContent = fullText;
+        button.textContent = 'Show Less';
+    } else {
+        textDiv.textContent = fullText.substring(0, 100) + '...';
+        button.textContent = 'Show More';
+    }
+}
+
+function sendMessageToProperty(propertyId) {
+    if (confirm('Send a message about this property?')) {
+        // You can implement individual property messaging here
+        showInfoToast('Individual property messaging feature coming soon!');
+    }
+}
+</script>

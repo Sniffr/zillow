@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Zillow Property Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-tachometer-alt"></i> Dashboard
+        </h1>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ total_properties }}</h4>
+                        <p class="card-text">Total Properties</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-home fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ total_searches }}</h4>
+                        <p class="card-text">Search Terms</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-search fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ properties_with_phones }}</h4>
+                        <p class="card-text">Properties with Phones</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-phone fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ unique_phones }}</h4>
+                        <p class="card-text">Unique Phone Numbers</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-address-book fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Cards -->
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-spider"></i> Property Scraper
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Run the Zillow property scraper to collect new listings and agent information.</p>
+                
+                <div id="scraper-status" class="alert alert-info d-none">
+                    <i class="fas fa-spinner fa-spin"></i> <span id="scraper-message">Starting scraper...</span>
+                </div>
+                
+                <button id="run-scraper-btn" class="btn btn-primary" onclick="runScraper()">
+                    <i class="fas fa-play"></i> Run Scraper
+                </button>
+                
+                {% if scraper_status.last_run %}
+                <small class="text-muted d-block mt-2">
+                    Last run: {{ scraper_status.last_run.strftime('%Y-%m-%d %H:%M:%S') }}
+                </small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-comment"></i> Send Messages
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Send personalized messages to agents and brokers about their listings.</p>
+                
+                <form method="POST" action="{{ url_for('send_messages') }}" id="send-messages-form">
+                    <button type="submit" class="btn btn-success" onclick="return confirm('Are you sure you want to send messages to all agents?')">
+                        <i class="fas fa-paper-plane"></i> Send Messages
+                    </button>
+                </form>
+                
+                <small class="text-muted d-block mt-2">
+                    This will send messages to {{ unique_phones }} unique phone numbers.
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-bolt"></i> Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('properties') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-list"></i> View Properties
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('export_csv') }}" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-download"></i> Export CSV
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-info w-100" onclick="refreshStats()">
+                            <i class="fas fa-sync-alt"></i> Refresh Stats
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-warning w-100" onclick="checkScraperStatus()">
+                            <i class="fas fa-info-circle"></i> Check Status
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function runScraper() {
+    const btn = document.getElementById('run-scraper-btn');
+    const statusDiv = document.getElementById('scraper-status');
+    const messageSpan = document.getElementById('scraper-message');
+    
+    // Disable button and show status
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+    statusDiv.classList.remove('d-none');
+    messageSpan.textContent = 'Starting scraper...';
+    
+    // Make AJAX request
+    fetch('/run_scraper', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            messageSpan.textContent = data.message;
+            showSuccessToast('Scraper started successfully!');
+            // Start polling for status updates
+            pollScraperStatus();
+        } else {
+            messageSpan.textContent = data.message;
+            showErrorToast(data.message);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-play"></i> Run Scraper';
+        }
+    })
+    .catch(error => {
+        messageSpan.textContent = 'Error: ' + error.message;
+        showErrorToast('Error starting scraper: ' + error.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Run Scraper';
+    });
+}
+
+function pollScraperStatus() {
+    const interval = setInterval(() => {
+        fetch('/api/scraper_status')
+        .then(response => response.json())
+        .then(data => {
+            const messageSpan = document.getElementById('scraper-message');
+            const btn = document.getElementById('run-scraper-btn');
+            
+            messageSpan.textContent = data.message;
+            
+            if (!data.running) {
+                clearInterval(interval);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Run Scraper';
+                
+                // Reload page after a short delay to show updated stats
+                setTimeout(() => {
+                    location.reload();
+                }, 2000);
+            }
+        })
+        .catch(error => {
+            console.error('Error polling status:', error);
+            showErrorToast('Error checking scraper status');
+        });
+    }, 2000);
+}
+
+function checkScraperStatus() {
+    fetch('/api/scraper_status')
+    .then(response => response.json())
+    .then(data => {
+        const statusDiv = document.getElementById('scraper-status');
+        const messageSpan = document.getElementById('scraper-message');
+        
+        if (data.running) {
+            statusDiv.classList.remove('d-none', 'alert-success', 'alert-danger');
+            statusDiv.classList.add('alert-info');
+            messageSpan.textContent = data.message;
+        } else {
+            statusDiv.classList.remove('d-none', 'alert-info');
+            statusDiv.classList.add('alert-success');
+            messageSpan.textContent = data.message || 'Scraper is idle';
+        }
+    })
+    .catch(error => {
+        console.error('Error checking status:', error);
+        showErrorToast('Error checking scraper status');
+    });
+}
+
+function refreshStats() {
+    location.reload();
+}
+
+// Check status on page load
+document.addEventListener('DOMContentLoaded', function() {
+    checkScraperStatus();
+});
+</script>
+{% endblock %}

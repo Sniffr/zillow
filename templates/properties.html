@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Properties - Zillow Property Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>
+                <i class="fas fa-list"></i> Properties
+            </h1>
+            <div>
+                <a href="{{ url_for('export_csv') }}" class="btn btn-success">
+                    <i class="fas fa-download"></i> Export CSV
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-table"></i> Property Listings
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table id="properties-table" class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Search Term</th>
+                                <th>Address</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Agent Info</th>
+                                <th>Phone Numbers</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Data will be loaded via AJAX -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Property Detail Modal -->
+<div class="modal fade" id="propertyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Property Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="propertyModalBody">
+                <!-- Content will be loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Initialize DataTable
+    $('#properties-table').DataTable({
+        ajax: {
+            url: '/api/properties',
+            dataSrc: 'data'
+        },
+        columns: [
+            { data: 'id' },
+            { data: 'search_term' },
+            { data: 'address' },
+            { data: 'price' },
+            { data: 'sold_by' },
+            { data: 'agent_info' },
+            { data: 'phone_numbers' },
+            { data: 'created_at' },
+            { 
+                data: 'actions',
+                orderable: false,
+                searchable: false
+            }
+        ],
+        responsive: true,
+        pageLength: 25,
+        order: [[0, 'desc']], // Sort by ID descending
+        language: {
+            search: "Search properties:",
+            lengthMenu: "Show _MENU_ properties per page",
+            info: "Showing _START_ to _END_ of _TOTAL_ properties",
+            paginate: {
+                first: "First",
+                last: "Last",
+                next: "Next",
+                previous: "Previous"
+            }
+        },
+        dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>' +
+             '<"row"<"col-sm-12"tr>>' +
+             '<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+        initComplete: function() {
+            // Add custom filters
+            this.api().columns().every(function() {
+                let column = this;
+                let title = column.header().textContent;
+                
+                // Add filter for search term column
+                if (title === 'Search Term') {
+                    let select = $('<select class="form-select form-select-sm"><option value="">All Search Terms</option></select>')
+                        .appendTo($(column.header()))
+                        .on('change', function() {
+                            let val = $.fn.dataTable.util.escapeRegex($(this).val());
+                            column.search(val ? '^' + val + '$' : '', true, false).draw();
+                        });
+                    
+                    column.data().unique().sort().each(function(d, j) {
+                        select.append('<option value="' + d + '">' + d + '</option>');
+                    });
+                }
+            });
+        }
+    });
+});
+
+function viewProperty(propertyId) {
+    // Show loading in modal
+    $('#propertyModalBody').html('<div class="text-center"><i class="fas fa-spinner fa-spin fa-2x"></i><p>Loading...</p></div>');
+    $('#propertyModal').modal('show');
+    
+    // Load property details
+    fetch(`/property/${propertyId}`)
+        .then(response => response.text())
+        .then(html => {
+            $('#propertyModalBody').html(html);
+        })
+        .catch(error => {
+            $('#propertyModalBody').html('<div class="alert alert-danger">Error loading property details</div>');
+        });
+}
+
+function sendMessage(propertyId) {
+    if (confirm('Send a message about this property?')) {
+        // You can implement individual property messaging here
+        showInfoToast('Individual property messaging feature coming soon!');
+    }
+}
+
+// Refresh table data
+function refreshTable() {
+    $('#properties-table').DataTable().ajax.reload();
+}
+
+// Auto-refresh every 30 seconds
+setInterval(refreshTable, 30000);
+</script>
+{% endblock %}
