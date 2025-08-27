@@ -17,7 +17,7 @@ app.secret_key = 'zillow_property_manager_secret_key_2024'
 
 # Global variable to track scraper status
 scraper_status_data = {
-    'running': False,
+    'running': False,  # Whether scraper is currently executing
     'message': '',
     'last_run': None,
     'next_run': None,
@@ -107,6 +107,9 @@ def start_scheduler():
     
     # Schedule first run
     schedule_next_run()
+    
+    # Update global status to reflect scheduler is running
+    scraper_status_data['running'] = False  # Scraper itself is not running, but scheduler is
 
 def stop_scheduler():
     """Stop the scraper scheduler"""
@@ -872,7 +875,7 @@ def api_scraper_status():
                 'total_properties': total_properties,
                 'log_file_count': log_file_count,
                 'scheduler_status': {
-                    'running': scraper_status_data['running'],
+                    'running': scheduler_running,  # Use the actual scheduler status
                     'next_run': scraper_status_data['next_run'].strftime('%Y-%m-%d %H:%M:%S') if scraper_status_data['next_run'] else None,
                     'total_runs': scraper_status_data['total_runs'],
                     'successful_runs': scraper_status_data['successful_runs'],
