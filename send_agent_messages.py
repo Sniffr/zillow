@@ -329,6 +329,38 @@ I'm very interested in learning more about this property. Could you please send 
 
 Thank you!"""
     
+    # Load message template from database or use fallback
+    print("\nLoading message template from database...")
+    try:
+        # Try to get the default template from database
+        default_template = db_manager.get_default_message_template()
+        if default_template:
+            message_template = default_template.template_text
+            print(f"✓ Using database template: {default_template.name}")
+            print(f"  Description: {default_template.description}")
+            print(f"  Category: {default_template.category}")
+        else:
+            # Fallback to hardcoded template if no default in database
+            message_template = """Hello {agent_name}! 
+
+I saw your listing for the property at {property_address} (listed at {property_price}) in the {search_area} area.
+
+I'm very interested in learning more about this property. Could you please send me additional information and let me know when we could schedule a viewing?
+
+Thank you!"""
+            print("⚠ No default template found in database, using fallback template")
+            
+    except Exception as e:
+        print(f"⚠ Error loading template from database: {str(e)}")
+        print("Using fallback template...")
+        message_template = """Hello {agent_name}! 
+
+I saw your listing for the property at {property_address} (listed at {property_price}) in the {search_area} area.
+
+I'm very interested in learning more about this property. Could you please send me additional information and let me know when we could schedule a viewing?
+
+Thank you!"""
+    
     # Send messages to agents
     print(f"\n{'='*60}")
     print("STARTING MESSAGE CAMPAIGN")

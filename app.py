@@ -264,5 +264,410 @@ def export_csv():
     flash(f'CSV exported successfully: {filename}', 'success')
     return redirect(url_for('properties'))
 
+# Search Configuration Management Routes
+@app.route('/search_configs')
+def search_configs():
+    """Search configurations management page"""
+    return render_template('search_configs.html')
+
+@app.route('/api/search_configs')
+def api_search_configs():
+    """API endpoint to get search configurations for DataTable"""
+    db_manager = DatabaseManager()
+    
+    # Get all search configurations
+    configs = db_manager.get_all_search_configs(active_only=False)
+    
+    # Convert to list of dictionaries for DataTable
+    data = []
+    for config in configs:
+        data.append({
+            'id': config.id,
+            'search_value': config.search_value,
+            'ne_lat': config.ne_lat,
+            'ne_long': config.ne_long,
+            'sw_lat': config.sw_lat,
+            'sw_long': config.sw_long,
+            'pagination': config.pagination,
+            'description': config.description or '',
+            'is_active': 'Active' if config.is_active else 'Inactive',
+            'created_at': config.created_at.strftime('%Y-%m-%d %H:%M') if config.created_at else '',
+            'actions': f'''
+                <button class="btn btn-sm btn-primary" onclick="editSearchConfig({config.id})">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-{"warning" if config.is_active else "success"}" onclick="toggleSearchConfig({config.id}, {config.is_active})">
+                    <i class="fas fa-{"pause" if config.is_active else "play"}"></i>
+                </button>
+                <button class="btn btn-sm btn-info" onclick="setDefaultSearchConfig({config.id})">
+                    <i class="fas fa-star"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteSearchConfig({config.id})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            '''
+        })
+    
+    db_manager.close()
+    
+    return jsonify({
+        'data': data
+    })
+
+@app.route('/api/search_configs', methods=['POST'])
+def api_create_search_config():
+    """Create a new search configuration"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['search_value', 'ne_lat', 'ne_long', 'sw_lat', 'sw_long']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({'success': False, 'message': f'Missing required field: {field}'}), 400
+        
+        db_manager = DatabaseManager()
+        
+        # Check if search value already exists
+        existing = db_manager.get_search_config_by_value(data['search_value'])
+        if existing:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Search configuration with this value already exists'}), 400
+        
+        # Create config data
+        config_data = {
+            'search_value': data['search_value'],
+            'ne_lat': float(data['ne_lat']),
+            'ne_long': float(data['ne_long']),
+            'sw_lat': float(data['sw_lat']),
+            'sw_long': float(data['sw_long']),
+            'pagination': int(data.get('pagination', 1)),
+            'description': data.get('description', ''),
+            'is_active': True
+        }
+        
+        db_manager.add_search_config(config_data)
+        db_manager.commit()
+        db_manager.close()
+        
+        return jsonify({'success': True, 'message': 'Search configuration created successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error creating search configuration: {str(e)}'}), 500
+
+@app.route('/api/search_configs/<int:config_id>', methods=['PUT'])
+def api_update_search_config(config_id):
+    """Update an existing search configuration"""
+    try:
+        data = request.get_json()
+        
+        db_manager = DatabaseManager()
+        config = db_manager.session.query(db_manager.SearchConfig).get(config_id)
+        
+        if not config:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Search configuration not found'}), 404
+        
+        # Update fields
+        if 'search_value' in data:
+            config.search_value = data['search_value']
+        if 'ne_lat' in data:
+            config.ne_lat = float(data['ne_lat'])
+        if 'ne_long' in data:
+            config.ne_long = float(data['ne_long'])
+        if 'sw_lat' in data:
+            config.sw_lat = float(data['sw_lat'])
+        if 'sw_long' in data:
+            config.sw_long = float(data['sw_long'])
+        if 'pagination' in data:
+            config.pagination = int(data['pagination'])
+        if 'description' in data:
+            config.description = data['description']
+        
+        db_manager.commit()
+        db_manager.close()
+        
+        return jsonify({'success': True, 'message': 'Search configuration updated successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error updating search configuration: {str(e)}'}), 500
+
+@app.route('/api/search_configs/<int:config_id>', methods=['DELETE'])
+def api_delete_search_config(config_id):
+    """Delete a search configuration"""
+    try:
+        db_manager = DatabaseManager()
+        config = db_manager.session.query(db_manager.SearchConfig).get(config_id)
+        
+        if not config:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Search configuration not found'}), 404
+        
+        db_manager.session.delete(config)
+        db_manager.commit()
+        db_manager.close()
+        
+        return jsonify({'success': True, 'message': 'Search configuration deleted successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error deleting search configuration: {str(e)}'}), 500
+
+@app.route('/api/search_configs/<int:config_id>/toggle', methods=['POST'])
+def api_toggle_search_config(config_id):
+    """Toggle search configuration active/inactive status"""
+    try:
+        db_manager = DatabaseManager()
+        config = db_manager.session.query(db_manager.SearchConfig).get(config_id)
+        
+        if not config:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Search configuration not found'}), 404
+        
+        if config.is_active:
+            db_manager.deactivate_search_config(config.search_value)
+            message = 'Search configuration deactivated'
+        else:
+            db_manager.activate_search_config(config.search_value)
+            message = 'Search configuration activated'
+        
+        db_manager.close()
+        
+        return jsonify({'success': True, 'message': message})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error toggling search configuration: {str(e)}'}), 500
+
+# Message Template Management Routes
+@app.route('/message_templates')
+def message_templates():
+    """Message templates management page"""
+    return render_template('message_templates.html')
+
+@app.route('/api/message_templates')
+def api_message_templates():
+    """API endpoint to get message templates for DataTable"""
+    db_manager = DatabaseManager()
+    
+    # Get all message templates
+    templates = db_manager.get_all_message_templates(active_only=False)
+    
+    # Convert to list of dictionaries for DataTable
+    data = []
+    for template in templates:
+        data.append({
+            'id': template.id,
+            'name': template.name,
+            'category': template.category,
+            'description': template.description or '',
+            'is_default': 'Yes' if template.is_default else 'No',
+            'is_active': 'Active' if template.is_active else 'Inactive',
+            'created_at': template.created_at.strftime('%Y-%m-%d %H:%M') if template.created_at else '',
+            'actions': f'''
+                <button class="btn btn-sm btn-primary" onclick="editMessageTemplate({template.id})">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-info" onclick="viewMessageTemplate({template.id})">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="btn btn-sm btn-{"warning" if template.is_active else "success"}" onclick="toggleMessageTemplate({template.id}, {template.is_active})" {"disabled" if template.is_default else ""}>
+                    <i class="fas fa-{"pause" if template.is_active else "play"}"></i>
+                </button>
+                <button class="btn btn-sm btn-success" onclick="setDefaultMessageTemplate({template.id})" {"disabled" if template.is_default else ""}>
+                    <i class="fas fa-star"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteMessageTemplate({template.id})" {"disabled" if template.is_default else ""}>
+                    <i class="fas fa-trash"></i>
+                </button>
+            '''
+        })
+    
+    db_manager.close()
+    
+    return jsonify({
+        'data': data
+    })
+
+@app.route('/api/message_templates', methods=['POST'])
+def api_create_message_template():
+    """Create a new message template"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['name', 'template_text']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({'success': False, 'message': f'Missing required field: {field}'}), 400
+        
+        db_manager = DatabaseManager()
+        
+        # Check if template name already exists
+        existing = db_manager.get_message_template_by_name(data['name'])
+        if existing:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Message template with this name already exists'}), 400
+        
+        # Create template data
+        template_data = {
+            'name': data['name'],
+            'template_text': data['template_text'],
+            'description': data.get('description', ''),
+            'category': data.get('category', 'general'),
+            'available_variables': data.get('available_variables', '[]'),
+            'is_default': data.get('is_default', False),
+            'is_active': True
+        }
+        
+        db_manager.add_message_template(template_data)
+        db_manager.commit()
+        db_manager.close()
+        
+        return jsonify({'success': True, 'message': 'Message template created successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error creating message template: {str(e)}'}), 500
+
+@app.route('/api/message_templates/<int:template_id>', methods=['PUT'])
+def api_update_message_template(template_id):
+    """Update an existing message template"""
+    try:
+        data = request.get_json()
+        
+        db_manager = DatabaseManager()
+        template = db_manager.session.query(db_manager.MessageTemplate).get(template_id)
+        
+        if not template:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Message template not found'}), 404
+        
+        # Update fields
+        if 'name' in data:
+            template.name = data['name']
+        if 'template_text' in data:
+            template.template_text = data['template_text']
+        if 'description' in data:
+            template.description = data['description']
+        if 'category' in data:
+            template.category = data['category']
+        if 'available_variables' in data:
+            template.available_variables = data['available_variables']
+        
+        db_manager.commit()
+        db_manager.close()
+        
+        return jsonify({'success': True, 'message': 'Message template updated successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error updating message template: {str(e)}'}), 500
+
+@app.route('/api/message_templates/<int:template_id>', methods=['DELETE'])
+def api_delete_message_template(template_id):
+    """Delete a message template"""
+    try:
+        db_manager = DatabaseManager()
+        template = db_manager.session.query(db_manager.MessageTemplate).get(template_id)
+        
+        if not template:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Message template not found'}), 404
+        
+        if template.is_default:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Cannot delete default template. Set another template as default first.'}), 400
+        
+        db_manager.session.delete(template)
+        db_manager.commit()
+        db_manager.close()
+        
+        return jsonify({'success': True, 'message': 'Message template deleted successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error deleting message template: {str(e)}'}), 500
+
+@app.route('/api/message_templates/<int:template_id>/toggle', methods=['POST'])
+def api_toggle_message_template(template_id):
+    """Toggle message template active/inactive status"""
+    try:
+        db_manager = DatabaseManager()
+        template = db_manager.session.query(db_manager.MessageTemplate).get(template_id)
+        
+        if not template:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Message template not found'}), 404
+        
+        if template.is_default:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Cannot deactivate default template. Set another template as default first.'}), 400
+        
+        if template.is_active:
+            db_manager.deactivate_message_template(template.name)
+            message = 'Message template deactivated'
+        else:
+            db_manager.activate_message_template(template.name)
+            message = 'Message template activated'
+        
+        db_manager.close()
+        
+        return jsonify({'success': True, 'message': message})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error toggling message template: {str(e)}'}), 500
+
+@app.route('/api/message_templates/<int:template_id>/set_default', methods=['POST'])
+def api_set_default_message_template(template_id):
+    """Set a message template as the default"""
+    try:
+        db_manager = DatabaseManager()
+        template = db_manager.session.query(db_manager.MessageTemplate).get(template_id)
+        
+        if not template:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Message template not found'}), 404
+        
+        if not template.is_active:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Cannot set inactive template as default'}), 400
+        
+        success = db_manager.set_default_message_template(template.name)
+        db_manager.close()
+        
+        if success:
+            return jsonify({'success': True, 'message': f'"{template.name}" set as default template'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to set template as default'}), 500
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error setting default template: {str(e)}'}), 500
+
+@app.route('/api/message_templates/<int:template_id>')
+def api_get_message_template(template_id):
+    """Get a specific message template"""
+    try:
+        db_manager = DatabaseManager()
+        template = db_manager.session.query(db_manager.MessageTemplate).get(template_id)
+        
+        if not template:
+            db_manager.close()
+            return jsonify({'success': False, 'message': 'Message template not found'}), 404
+        
+        template_data = {
+            'id': template.id,
+            'name': template.name,
+            'template_text': template.template_text,
+            'description': template.description,
+            'category': template.category,
+            'available_variables': template.available_variables,
+            'is_default': template.is_default,
+            'is_active': template.is_active,
+            'created_at': template.created_at.strftime('%Y-%m-%d %H:%M') if template.created_at else ''
+        }
+        
+        db_manager.close()
+        
+        return jsonify({'success': True, 'data': template_data})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error getting message template: {str(e)}'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

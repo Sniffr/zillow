@@ -2,11 +2,55 @@ import pyzill
 import json
 import pandas as pd
 import os
+import time
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import wraps
 from database_models import DatabaseManager, Property
 from sqlalchemy.exc import SQLAlchemyError
 
 import send_agent_messages
 
+# Configuration for retry mechanism
+RETRY_CONFIG = {
+    'search_retries': 3,
+    'search_base_delay': 1,
+    'search_max_delay': 60,
+    'search_backoff_factor': 2,
+    'property_retries': 2,
+    'property_base_delay': 0.5,
+    'property_max_delay': 15,
+    'property_backoff_factor': 1.5
+}
+
+# Retry decorator with exponential backoff
+def retry_with_backoff(max_retries=3, base_delay=1, max_delay=60, backoff_factor=2):
+    """Retry decorator with exponential backoff and jitter"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            delay = base_delay
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt == max_retries:
+                        raise last_exception
+                    
+                    # Add jitter to prevent thundering herd
+                    jitter = random.uniform(0, 0.1 * delay)
+                    sleep_time = min(delay + jitter, max_delay)
+                    
+                    print(f"  Attempt {attempt + 1} failed: {str(e)}. Retrying in {sleep_time:.2f}s...")
+                    time.sleep(sleep_time)
+                    delay = min(delay * backoff_factor, max_delay)
+            
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 # Load configurations from the database
 def load_search_configs(db_manager):
@@ -38,8 +82,10 @@ def load_search_configs(db_manager):
         print(f"Error loading search configurations from database: {str(e)}")
         return []
 
+@retry_with_backoff(max_retries=RETRY_CONFIG['search_retries'], base_delay=RETRY_CONFIG['search_base_delay'], 
+                   max_delay=RETRY_CONFIG['search_max_delay'], backoff_factor=RETRY_CONFIG['search_backoff_factor'])
 def process_search_config(config, proxy_url):
-    """Process a single search configuration"""
+    """Process a single search configuration with retry mechanism"""
     print(f"Processing search: {config['search_value']}")
     
     results_sale = pyzill.for_sale(
@@ -62,27 +108,47 @@ def process_search_config(config, proxy_url):
     # Create a list to store all property data for this search
     properties_data = []
     
-    # Process properties (limit to 10 for testing, remove limit for production)
-    for i in range(min(10, len(map_result))):
-        property_url = "https://www.zillow.com" + map_result[i]['detailUrl']
-        data = pyzill.get_from_home_url(property_url, proxy_url)
+    # Process properties concurrently for better performance
+    @retry_with_backoff(max_retries=RETRY_CONFIG['property_retries'], base_delay=RETRY_CONFIG['property_base_delay'], 
+                       max_delay=RETRY_CONFIG['property_max_delay'], backoff_factor=RETRY_CONFIG['property_backoff_factor'])
+    def process_property(property_info):
+        try:
+            property_url = "https://www.zillow.com" + property_info['detailUrl']
+            data = pyzill.get_from_home_url(property_url, proxy_url)
+            
+            # Create a dictionary for this property
+            property_dict = {
+                'Address': property_info['address'],
+                'Price': property_info['price'],
+                'Sold_By': property_info['marketingStatusSimplifiedCd'],
+                'Url': property_url
+            }
+            
+            # Flatten attribution data into individual columns
+            if 'attributionInfo' in data and data['attributionInfo']:
+                for key, value in data['attributionInfo'].items():
+                    # Clean the column name by removing special characters and spaces
+                    clean_key = key.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
+                    property_dict[f'Attribution_{clean_key}'] = value
+            
+            return property_dict
+        except Exception as e:
+            print(f"    Error processing property {property_info.get('address', 'unknown')}: {str(e)}")
+            return None
+    
+    # Process properties concurrently (limit to 10 for testing, remove limit for production)
+    property_limit = min(10, len(map_result))
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_property = {executor.submit(process_property, map_result[i]): i for i in range(property_limit)}
         
-        # Create a dictionary for this property
-        property_dict = {
-            'Address': map_result[i]['address'],
-            'Price': map_result[i]['price'],
-            'Sold_By': map_result[i]['marketingStatusSimplifiedCd'],
-            'Url': property_url
-        }
-        
-        # Flatten attribution data into individual columns
-        if 'attributionInfo' in data and data['attributionInfo']:
-            for key, value in data['attributionInfo'].items():
-                # Clean the column name by removing special characters and spaces
-                clean_key = key.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
-                property_dict[f'Attribution_{clean_key}'] = value
-        
-        properties_data.append(property_dict)
+        for future in as_completed(future_to_property):
+            try:
+                property_dict = future.result()
+                if property_dict:
+                    properties_data.append(property_dict)
+            except Exception as e:
+                print(f"    Error processing property: {str(e)}")
+                continue
     
     print(f"  Found {len(properties_data)} properties for '{config['search_value']}'")
     return properties_data
@@ -160,7 +226,15 @@ def export_database_to_csv(db_manager, output_dir='csv_exports'):
     
     return exported_files
 
+@retry_with_backoff(max_retries=RETRY_CONFIG['search_retries'], base_delay=RETRY_CONFIG['search_base_delay'], 
+                   max_delay=RETRY_CONFIG['search_max_delay'], backoff_factor=RETRY_CONFIG['search_backoff_factor'])
+def process_search_with_retry(config, proxy_url):
+    """Process a single search configuration with retry mechanism"""
+    return process_search_config(config, proxy_url)
+
 def main():
+    start_time = time.time()
+    
     # Initialize database manager
     db_manager = DatabaseManager()
     print("\nDatabase connection established.")
@@ -177,21 +251,28 @@ def main():
     proxy_url = pyzill.parse_proxy("76cc06db4f59a17e.shg.na.pyproxy.io", "16666",
                                    "ASDAr32-zone-resi-region-us", "Fzsdf23")
     
-    # Process each search configuration separately
+    # Process each search configuration separately with concurrent processing
     successful_searches = []
     total_properties_saved = 0
     
-    for i, config in enumerate(search_configs):
-        print(f"\nProcessing search {i+1}/{len(search_configs)}")
-        try:
-            properties_data = process_search_config(config, proxy_url)
-            saved_count = save_search_to_database(properties_data, config, db_manager)
-            if saved_count > 0:
-                successful_searches.append(config['search_value'])
-                total_properties_saved += saved_count
-        except Exception as e:
-            print(f"  Error processing search '{config['search_value']}': {str(e)}")
-            continue
+    # Optimize thread count based on number of configs and system capabilities
+    max_workers = min(5, len(search_configs), 10)  # Cap at 10 to avoid overwhelming the API
+    print(f"Using {max_workers} concurrent workers for processing")
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_config = {executor.submit(process_search_with_retry, config, proxy_url): config for config in search_configs}
+        
+        for future in as_completed(future_to_config):
+            config = future_to_config[future]
+            try:
+                properties_data = future.result()
+                saved_count = save_search_to_database(properties_data, config, db_manager)
+                if saved_count > 0:
+                    successful_searches.append(config['search_value'])
+                    total_properties_saved += saved_count
+            except Exception as e:
+                print(f"  Error processing search '{config['search_value']}': {str(e)}")
+                continue
     
     # Summary
     print(f"\n{'='*50}")
@@ -226,11 +307,22 @@ def main():
     else:
         print("No data was saved to the database.")
     
+    # Performance summary
+    end_time = time.time()
+    total_time = end_time - start_time
+    print(f"\n{'='*50}")
+    print("PERFORMANCE SUMMARY")
+    print(f"{'='*50}")
+    print(f"Total execution time: {total_time:.2f} seconds")
+    if total_properties_saved > 0:
+        print(f"Properties processed per second: {total_properties_saved/total_time:.2f}")
+        print(f"Average time per property: {total_time/total_properties_saved:.2f} seconds")
+    
     # Close database connection
     db_manager.close()
     print("\nDatabase connection closed.")
     
-    send_agent_messages.main()
+    # send_agent_messages.main()
 
 
 

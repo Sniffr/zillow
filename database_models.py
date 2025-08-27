@@ -99,6 +99,33 @@ class SearchConfig(Base):
         return f"<SearchConfig(id={self.id}, search_value='{self.search_value}')>"
 
 
+class MessageTemplate(Base):
+    """Message template model"""
+    __tablename__ = 'message_templates'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Template information
+    name = Column(String(255), nullable=False, unique=True)
+    template_text = Column(Text, nullable=False)
+    is_default = Column(Integer, default=0)  # 1 for default, 0 for regular
+    is_active = Column(Integer, default=1)  # 1 for active, 0 for inactive
+    
+    # Template metadata
+    description = Column(Text)
+    category = Column(String(100), default='general')  # e.g., 'initial', 'follow_up', 'custom'
+    
+    # Available variables for this template
+    available_variables = Column(Text)  # JSON string of available variables
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<MessageTemplate(id={self.id}, name='{self.name}', is_default={self.is_default})>"
+
+
 class DatabaseManager:
     """Database manager for handling database operations"""
     
@@ -373,3 +400,182 @@ class DatabaseManager:
             True if activated, False if not found
         """
         return self.update_search_config(search_value, {'is_active': 1})
+    
+    # Message Template Methods
+    def add_message_template(self, template_data):
+        """
+        Add a new message template to the database
+        
+        Args:
+            template_data: Dictionary containing template information
+        
+        Returns:
+            MessageTemplate object
+        """
+        # If this is set as default, unset any existing default
+        if template_data.get('is_default', False):
+            self.clear_default_template()
+        
+        message_template = MessageTemplate(
+            name=template_data['name'],
+            template_text=template_data['template_text'],
+            is_default=template_data.get('is_default', False),
+            is_active=template_data.get('is_active', True),
+            description=template_data.get('description', ''),
+            category=template_data.get('category', 'general'),
+            available_variables=template_data.get('available_variables', '')
+        )
+        
+        self.session.add(message_template)
+        return message_template
+    
+    def get_all_message_templates(self, active_only=True):
+        """
+        Get all message templates from the database
+        
+        Args:
+            active_only: If True, only return active templates
+        
+        Returns:
+            List of MessageTemplate objects
+        """
+        query = self.session.query(MessageTemplate)
+        if active_only:
+            query = query.filter_by(is_active=1)
+        return query.order_by(MessageTemplate.is_default.desc(), MessageTemplate.name).all()
+    
+    def get_message_template_by_name(self, name):
+        """
+        Get a message template by name
+        
+        Args:
+            name: The template name to look for
+        
+        Returns:
+            MessageTemplate object or None
+        """
+        return self.session.query(MessageTemplate).filter_by(name=name).first()
+    
+    def get_default_message_template(self):
+        """
+        Get the default message template
+        
+        Returns:
+            MessageTemplate object or None
+        """
+        return self.session.query(MessageTemplate).filter_by(is_default=1, is_active=1).first()
+    
+    def set_default_message_template(self, template_name):
+        """
+        Set a message template as the default
+        
+        Args:
+            template_name: The name of the template to set as default
+        
+        Returns:
+            True if set, False if template not found
+        """
+        # First, clear any existing default
+        self.clear_default_template()
+        
+        # Set the new default
+        template = self.get_message_template_by_name(template_name)
+        if template:
+            template.is_default = 1
+            self.commit()
+            return True
+        return False
+    
+    def clear_default_template(self):
+        """Clear the default flag from all templates"""
+        self.session.query(MessageTemplate).filter_by(is_default=1).update({'is_default': 0})
+    
+    def update_message_template(self, template_name, updates):
+        """
+        Update a message template
+        
+        Args:
+            template_name: The template name to update
+            updates: Dictionary containing fields to update
+        
+        Returns:
+            True if updated, False if not found
+        """
+        template = self.get_message_template_by_name(template_name)
+        if template:
+            # If setting as default, clear any existing default
+            if updates.get('is_default', False):
+                self.clear_default_template()
+            
+            for key, value in updates.items():
+                if hasattr(template, key):
+                    setattr(template, key, value)
+            
+            template.updated_at = datetime.utcnow()
+            self.commit()
+            return True
+        return False
+    
+    def delete_message_template(self, template_name):
+        """
+        Delete a message template
+        
+        Args:
+            template_name: The template name to delete
+        
+        Returns:
+            True if deleted, False if not found
+        """
+        template = self.get_message_template_by_name(template_name)
+        if template:
+            # Don't allow deletion of default template
+            if template.is_default:
+                print(f"Cannot delete default template '{template_name}'. Set another template as default first.")
+                return False
+            
+            self.session.delete(template)
+            self.commit()
+            return True
+        return False
+    
+    def deactivate_message_template(self, template_name):
+        """
+        Deactivate a message template (soft delete)
+        
+        Args:
+            template_name: The template name to deactivate
+        
+        Returns:
+            True if deactivated, False if not found
+        """
+        return self.update_message_template(template_name, {'is_active': 0})
+    
+    def activate_message_template(self, template_name):
+        """
+        Activate a message template
+        
+        Args:
+            template_name: The template name to activate
+        
+        Returns:
+            True if activated, False if not found
+        """
+        return self.update_message_template(template_name, {'is_active': 1})
+    
+    def get_template_variables(self, template_name):
+        """
+        Get available variables for a template
+        
+        Args:
+            template_name: The template name
+        
+        Returns:
+            List of available variables or empty list
+        """
+        template = self.get_message_template_by_name(template_name)
+        if template and template.available_variables:
+            try:
+                return json.loads(template.available_variables)
+            except json.JSONDecodeError:
+                return []
+        return []
