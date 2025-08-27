@@ -8,17 +8,34 @@ from sqlalchemy.exc import SQLAlchemyError
 import send_agent_messages
 
 
-# Read configurations from the JSON file
-def load_search_configs(config_file):
-    """Load search configurations from a JSON file"""
+# Load configurations from the database
+def load_search_configs(db_manager):
+    """Load search configurations from the database"""
     try:
-        with open(config_file, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print(f"Error: Configuration file '{config_file}' not found.")
-        return []
-    except json.JSONDecodeError:
-        print(f"Error: Invalid JSON format in '{config_file}'.")
+        configs = db_manager.get_all_search_configs(active_only=True)
+        if not configs:
+            print("No active search configurations found in database.")
+            return []
+        
+        # Convert database objects to dictionary format for compatibility
+        config_list = []
+        for config in configs:
+            config_dict = {
+                'search_value': config.search_value,
+                'ne_lat': config.ne_lat,
+                'ne_long': config.ne_long,
+                'sw_lat': config.sw_lat,
+                'sw_long': config.sw_long,
+                'pagination': config.pagination,
+                'description': config.description
+            }
+            config_list.append(config_dict)
+        
+        print(f"Loaded {len(config_list)} active search configurations from database")
+        return config_list
+        
+    except Exception as e:
+        print(f"Error loading search configurations from database: {str(e)}")
         return []
 
 def process_search_config(config, proxy_url):
@@ -144,20 +161,17 @@ def export_database_to_csv(db_manager, output_dir='csv_exports'):
     return exported_files
 
 def main():
-    # Configuration file path
-    config_file = 'search_configs.json'
-    
-    # Load search configurations
-    search_configs = load_search_configs(config_file)
-    
-    if not search_configs:
-        print("No search configurations found. Please check your JSON file.")
-        return
-    
     # Initialize database manager
     db_manager = DatabaseManager()
     print("\nDatabase connection established.")
     print("Data will be stored in: zillow_properties.db")
+    
+    # Load search configurations
+    search_configs = load_search_configs(db_manager)
+    
+    if not search_configs:
+        print("No search configurations found. Please check your database for active search configurations.")
+        return
     
     # Proxy configuration
     proxy_url = pyzill.parse_proxy("76cc06db4f59a17e.shg.na.pyproxy.io", "16666",

@@ -73,6 +73,32 @@ class Property(Base):
         return f"<Property(id={self.id}, address='{self.address}', search_term='{self.search_term}')>"
 
 
+class SearchConfig(Base):
+    """Search configuration model"""
+    __tablename__ = 'search_configs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Search configuration parameters
+    search_value = Column(String(500), nullable=False, unique=True)
+    ne_lat = Column(Float, nullable=False)
+    ne_long = Column(Float, nullable=False)
+    sw_lat = Column(Float, nullable=False)
+    sw_long = Column(Float, nullable=False)
+    pagination = Column(Integer, default=1)
+    
+    # Additional metadata
+    is_active = Column(Integer, default=1)  # 1 for active, 0 for inactive
+    description = Column(Text)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<SearchConfig(id={self.id}, search_value='{self.search_value}')>"
+
+
 class DatabaseManager:
     """Database manager for handling database operations"""
     
@@ -234,3 +260,116 @@ class DatabaseManager:
         """
         self.session.query(Property).filter_by(search_term=search_term).delete()
         self.commit()
+    
+    # Search Configuration Methods
+    def add_search_config(self, config_data):
+        """
+        Add a new search configuration to the database
+        
+        Args:
+            config_data: Dictionary containing search configuration
+        
+        Returns:
+            SearchConfig object
+        """
+        search_config = SearchConfig(
+            search_value=config_data['search_value'],
+            ne_lat=config_data['ne_lat'],
+            ne_long=config_data['ne_long'],
+            sw_lat=config_data['sw_lat'],
+            sw_long=config_data['sw_long'],
+            pagination=config_data.get('pagination', 1),
+            description=config_data.get('description', '')
+        )
+        
+        self.session.add(search_config)
+        return search_config
+    
+    def get_all_search_configs(self, active_only=True):
+        """
+        Get all search configurations from the database
+        
+        Args:
+            active_only: If True, only return active configurations
+        
+        Returns:
+            List of SearchConfig objects
+        """
+        query = self.session.query(SearchConfig)
+        if active_only:
+            query = query.filter_by(is_active=1)
+        return query.all()
+    
+    def get_search_config_by_value(self, search_value):
+        """
+        Get a search configuration by search value
+        
+        Args:
+            search_value: The search value to look for
+        
+        Returns:
+            SearchConfig object or None
+        """
+        return self.session.query(SearchConfig).filter_by(search_value=search_value).first()
+    
+    def update_search_config(self, search_value, updates):
+        """
+        Update a search configuration
+        
+        Args:
+            search_value: The search value to update
+            updates: Dictionary containing fields to update
+        
+        Returns:
+            True if updated, False if not found
+        """
+        config = self.get_search_config_by_value(search_value)
+        if config:
+            for key, value in updates.items():
+                if hasattr(config, key):
+                    setattr(config, key, value)
+            config.updated_at = datetime.utcnow()
+            self.commit()
+            return True
+        return False
+    
+    def delete_search_config(self, search_value):
+        """
+        Delete a search configuration
+        
+        Args:
+            search_value: The search value to delete
+        
+        Returns:
+            True if deleted, False if not found
+        """
+        config = self.get_search_config_by_value(search_value)
+        if config:
+            self.session.delete(config)
+            self.commit()
+            return True
+        return False
+    
+    def deactivate_search_config(self, search_value):
+        """
+        Deactivate a search configuration (soft delete)
+        
+        Args:
+            search_value: The search value to deactivate
+        
+        Returns:
+            True if deactivated, False if not found
+        """
+        return self.update_search_config(search_value, {'is_active': 0})
+    
+    def activate_search_config(self, search_value):
+        """
+        Activate a search configuration
+        
+        Args:
+            search_value: The search value to activate
+        
+        Returns:
+            True if activated, False if not found
+        """
+        return self.update_search_config(search_value, {'is_active': 1})
