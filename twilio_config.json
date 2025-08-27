@@ -1,0 +1,12 @@
+{
+    "twilio": {
+        "account_sid": "MGb4616cec171092e9442c72df27183d68",
+        "auth_token": "3a745974a005b5e8e9a60f1bb43146e5",
+        "phone_number": "+15179291514"
+    },
+    "message": {
+        "default_text": "Hello! I'm interested in learning more about your property listings. Could you please send me more information about available properties in the area? Thank you!",
+        "template": "Hello {agent_name}! I saw your listing for the property at {property_address} (listed at {property_price}) in the {search_area} area. I'm very interested in learning more about this property. Could you please send me additional information and let me know when we could schedule a viewing? Thank you!"
+    }
+}
+

@@ -1,0 +1,18 @@
+[
+  {
+    "ne_lat": 35.73,
+    "ne_long": -114.34,
+    "sw_lat": 33.61,
+    "sw_long": -117.68,
+    "pagination": 1,
+    "search_value": "Single family houses in San Bernardino"
+  },
+  {
+    "ne_lat": 34.05,
+    "ne_long": -118.24,
+    "sw_lat": 33.70,
+    "sw_long": -118.67,
+    "pagination": 1,
+    "search_value": "Single family houses in Los Angeles"
+  }
+]

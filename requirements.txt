@@ -1,0 +1,6 @@
+pandas>=1.3.0
+twilio>=7.0.0
+pyzill>=0.1.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
