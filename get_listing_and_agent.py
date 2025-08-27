@@ -161,7 +161,7 @@ def main():
     
     # Proxy configuration
     proxy_url = pyzill.parse_proxy("76cc06db4f59a17e.shg.na.pyproxy.io", "16666",
-                                   "ASDAr32-zone-resi-region-us-session-78303445cfe9", "Fzsdf23")
+                                   "ASDAr32-zone-resi-region-us", "Fzsdf23")
     
     # Process each search configuration separately
     successful_searches = []
