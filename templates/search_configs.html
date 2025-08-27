@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+
+{% block title %}Search Configurations - Zillow Property Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="fas fa-search"></i> Search Configurations</h1>
+            <button class="btn btn-primary" onclick="showAddSearchConfigModal()">
+                <i class="fas fa-plus"></i> Add New Search Config
+            </button>
+        </div>
+        
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table id="searchConfigsTable" class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Search Value</th>
+                                <th>Coordinates</th>
+                                <th>Pagination</th>
+                                <th>Description</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Data will be loaded dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Search Config Modal -->
+<div class="modal fade" id="searchConfigModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="searchConfigModalTitle">Add Search Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="searchConfigForm">
+                    <input type="hidden" id="searchConfigId" name="id">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="searchValue" class="form-label">Search Value *</label>
+                                <input type="text" class="form-control" id="searchValue" name="search_value" required>
+                                <div class="form-text">e.g., "Single family houses in Los Angeles"</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="pagination" class="form-label">Pagination</label>
+                                <input type="number" class="form-control" id="pagination" name="pagination" value="1" min="1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="neLat" class="form-label">NE Latitude *</label>
+                                <input type="number" class="form-control" id="neLat" name="ne_lat" step="0.000001" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="neLong" class="form-label">NE Longitude *</label>
+                                <input type="number" class="form-control" id="neLong" name="ne_long" step="0.000001" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="swLat" class="form-label">SW Latitude *</label>
+                                <input type="number" class="form-control" id="swLat" name="sw_lat" step="0.000001" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="swLong" class="form-label">SW Longitude *</label>
+                                <input type="number" class="form-control" id="swLong" name="sw_long" step="0.000001" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveSearchConfig()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteSearchConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this search configuration?</p>
+                <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeleteSearchConfig()">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let searchConfigsTable;
+let currentSearchConfigId = null;
+
+$(document).ready(function() {
+    initializeSearchConfigsTable();
+});
+
+function initializeSearchConfigsTable() {
+    searchConfigsTable = $('#searchConfigsTable').DataTable({
+        ajax: {
+            url: '/api/search_configs',
+            dataSrc: 'data'
+        },
+        columns: [
+            { data: 'id' },
+            { data: 'search_value' },
+            { 
+                data: null,
+                render: function(data) {
+                    return `NE: (${data.ne_lat}, ${data.ne_long})<br>SW: (${data.sw_lat}, ${data.sw_long})`;
+                }
+            },
+            { data: 'pagination' },
+            { data: 'description' },
+            { 
+                data: 'is_active',
+                render: function(data) {
+                    const badgeClass = data === 'Active' ? 'success' : 'secondary';
+                    return `<span class="badge bg-${badgeClass}">${data}</span>`;
+                }
+            },
+            { data: 'created_at' },
+            { 
+                data: 'actions',
+                orderable: false,
+                searchable: false
+            }
+        ],
+        order: [[0, 'desc']],
+        responsive: true,
+        pageLength: 25,
+        createdRow: function(row, data, dataIndex) {
+            $(row).attr('data-id', data.id);
+        }
+    });
+}
+
+function showAddSearchConfigModal() {
+    currentSearchConfigId = null;
+    $('#searchConfigModalTitle').text('Add Search Configuration');
+    $('#searchConfigForm')[0].reset();
+    $('#searchConfigModal').modal('show');
+}
+
+function editSearchConfig(id) {
+    currentSearchConfigId = id;
+    
+    // Get the current row data
+    const row = searchConfigsTable.row(`[data-id="${id}"]`).data();
+    
+    // Populate the form
+    $('#searchConfigId').val(id);
+    $('#searchValue').val(row.search_value);
+    $('#pagination').val(row.pagination);
+    $('#neLat').val(row.ne_lat);
+    $('#neLong').val(row.ne_long);
+    $('#swLat').val(row.sw_lat);
+    $('#swLong').val(row.sw_long);
+    $('#description').val(row.description);
+    
+    $('#searchConfigModalTitle').text('Edit Search Configuration');
+    $('#searchConfigModal').modal('show');
+}
+
+function saveSearchConfig() {
+    const formData = {
+        search_value: $('#searchValue').val(),
+        pagination: $('#pagination').val(),
+        ne_lat: $('#neLat').val(),
+        ne_long: $('#neLong').val(),
+        sw_lat: $('#swLat').val(),
+        sw_long: $('#swLong').val(),
+        description: $('#description').val()
+    };
+    
+    if (currentSearchConfigId) {
+        // Update existing
+        $.ajax({
+            url: `/api/search_configs/${currentSearchConfigId}`,
+            method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(response) {
+                if (response.success) {
+                    showToast('Success', response.message, 'success');
+                    $('#searchConfigModal').modal('hide');
+                    searchConfigsTable.ajax.reload();
+                } else {
+                    showToast('Error', response.message, 'error');
+                }
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                showToast('Error', response ? response.message : 'Failed to update search configuration', 'error');
+            }
+        });
+    } else {
+        // Create new
+        $.ajax({
+            url: '/api/search_configs',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(response) {
+                if (response.success) {
+                    showToast('Success', response.message, 'success');
+                    $('#searchConfigModal').modal('hide');
+                    searchConfigsTable.ajax.reload();
+                } else {
+                    showToast('Error', response.message, 'error');
+                }
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                showToast('Error', response ? response.message : 'Failed to create search configuration', 'error');
+            }
+        });
+    }
+}
+
+function toggleSearchConfig(id, isActive) {
+    $.ajax({
+        url: `/api/search_configs/${id}/toggle`,
+        method: 'POST',
+        success: function(response) {
+            if (response.success) {
+                showToast('Success', response.message, 'success');
+                searchConfigsTable.ajax.reload();
+            } else {
+                showToast('Error', response.message, 'error');
+            }
+        },
+        error: function(xhr) {
+            const response = xhr.responseJSON;
+            showToast('Error', response ? response.message : 'Failed to toggle search configuration', 'error');
+        }
+    });
+}
+
+function setDefaultSearchConfig(id) {
+    showToast('Info', 'Setting default search configuration is not yet implemented', 'info');
+}
+
+function deleteSearchConfig(id) {
+    currentSearchConfigId = id;
+    $('#deleteSearchConfigModal').modal('show');
+}
+
+function confirmDeleteSearchConfig() {
+    if (!currentSearchConfigId) return;
+    
+    $.ajax({
+        url: `/api/search_configs/${currentSearchConfigId}`,
+        method: 'DELETE',
+        success: function(response) {
+            if (response.success) {
+                showToast('Success', response.message, 'success');
+                $('#deleteSearchConfigModal').modal('hide');
+                searchConfigsTable.ajax.reload();
+            } else {
+                showToast('Error', response.message, 'error');
+            }
+        },
+        error: function(xhr) {
+            const response = xhr.responseJSON;
+            showToast('Error', response ? response.message : 'Failed to delete search configuration', 'error');
+        }
+    });
+}
+
+function showToast(title, message, type) {
+    const toastHtml = `
+        <div class="toast" role="alert">
+            <div class="toast-header">
+                <strong class="me-auto">${title}</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body">
+                ${message}
+            </div>
+        </div>
+    `;
+    
+    $('.toast-container').append(toastHtml);
+    $('.toast').last().toast('show');
+}
+</script>
+{% endblock %}
