@@ -10,6 +10,8 @@ from database_models import DatabaseManager, Property
 from sqlalchemy.exc import SQLAlchemyError
 
 import send_agent_messages
+from datetime import datetime
+from scraper_logger import ScraperLogger
 
 # Configuration for retry mechanism
 RETRY_CONFIG = {
@@ -233,101 +235,129 @@ def process_search_with_retry(config, proxy_url):
     return process_search_config(config, proxy_url)
 
 def main():
+    """Main function to run the property scraper"""
     start_time = time.time()
     
-    # Initialize database manager
-    db_manager = DatabaseManager()
-    print("\nDatabase connection established.")
-    print("Data will be stored in: zillow_properties.db")
-    
-    # Load search configurations
-    search_configs = load_search_configs(db_manager)
-    
-    if not search_configs:
-        print("No search configurations found. Please check your database for active search configurations.")
-        return
-    
-    # Proxy configuration
-    proxy_url = pyzill.parse_proxy("76cc06db4f59a17e.shg.na.pyproxy.io", "16666",
-                                   "ASDAr32-zone-resi-region-us", "Fzsdf23")
-    
-    # Process each search configuration separately with concurrent processing
-    successful_searches = []
-    total_properties_saved = 0
-    
-    # Optimize thread count based on number of configs and system capabilities
-    max_workers = min(5, len(search_configs), 10)  # Cap at 10 to avoid overwhelming the API
-    print(f"Using {max_workers} concurrent workers for processing")
-    
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_config = {executor.submit(process_search_with_retry, config, proxy_url): config for config in search_configs}
-        
-        for future in as_completed(future_to_config):
-            config = future_to_config[future]
-            try:
-                properties_data = future.result()
-                saved_count = save_search_to_database(properties_data, config, db_manager)
-                if saved_count > 0:
-                    successful_searches.append(config['search_value'])
-                    total_properties_saved += saved_count
-            except Exception as e:
-                print(f"  Error processing search '{config['search_value']}': {str(e)}")
-                continue
-    
-    # Summary
-    print(f"\n{'='*50}")
-    print("DATABASE STORAGE SUMMARY")
-    print(f"{'='*50}")
-    print(f"Total searches processed: {len(search_configs)}")
-    print(f"Successful searches: {len(successful_searches)}")
-    print(f"Total properties saved: {total_properties_saved}")
-    
-    if successful_searches:
-        print(f"\nSearch terms stored in database:")
-        for search_term in successful_searches:
-            count = len(db_manager.get_properties_by_search_term(search_term))
-            print(f"  ✓ {search_term}: {count} properties")
-        
-        # Show database statistics
-        print(f"\nDatabase Statistics:")
-        all_properties = db_manager.get_all_properties()
-        unique_search_terms = db_manager.get_unique_search_terms()
-        print(f"  Total properties in database: {len(all_properties)}")
-        print(f"  Unique search terms: {len(unique_search_terms)}")
-        
-        # Optional: Export to CSV for backup/viewing
-        export_choice = input("\nWould you like to export the database to CSV files? (y/n): ").lower()
-        if export_choice == 'y':
-            print("\nExporting database to CSV files...")
-            exported_files = export_database_to_csv(db_manager)
-            if exported_files:
-                print(f"\nExported {len(exported_files)} CSV files:")
-                for filepath in exported_files:
-                    print(f"  ✓ {filepath}")
-    else:
-        print("No data was saved to the database.")
-    
-    # Performance summary
-    end_time = time.time()
-    total_time = end_time - start_time
-    print(f"\n{'='*50}")
-    print("PERFORMANCE SUMMARY")
-    print(f"{'='*50}")
-    print(f"Total execution time: {total_time:.2f} seconds")
-    if total_properties_saved > 0:
-        print(f"Properties processed per second: {total_properties_saved/total_time:.2f}")
-        print(f"Average time per property: {total_time/total_properties_saved:.2f} seconds")
-    
-    # Close database connection
-    db_manager.close()
-    print("\nDatabase connection closed.")
-    
-    # send_agent_messages.main()
-
-
-
-
-
+    # Initialize logger
+    with ScraperLogger() as logger:
+        try:
+            print("="*50)
+            print("ZILLOW PROPERTY SCRAPER")
+            print("="*50)
+            print(f"Started at: {datetime.now()}")
+            
+            # Initialize database manager
+            db_manager = DatabaseManager()
+            logger.info("Database connection established.")
+            logger.info("Data will be stored in: zillow_properties.db")
+            
+            # Load search configurations
+            search_configs = load_search_configs(db_manager)
+            
+            if not search_configs:
+                logger.warning("No search configurations found. Please check your database for active search configurations.")
+                return
+            
+            # Proxy configuration
+            proxy_url = pyzill.parse_proxy("76cc06db4f59a17e.shg.na.pyproxy.io", "16666",
+                                           "ASDAr32-zone-resi-region-us", "Fzsdf23")
+            
+            # Process each search configuration separately with concurrent processing
+            successful_searches = []
+            total_properties_saved = 0
+            total_properties_found = 0
+            
+            # Optimize thread count based on number of configs and system capabilities
+            max_workers = min(5, len(search_configs), 10)  # Cap at 10 to avoid overwhelming the API
+            logger.info(f"Using {max_workers} concurrent workers for processing")
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_config = {executor.submit(process_search_with_retry, config, proxy_url): config for config in search_configs}
+                
+                for future in as_completed(future_to_config):
+                    config = future_to_config[future]
+                    try:
+                        properties_data = future.result()
+                        if properties_data:
+                            total_properties_found += len(properties_data)
+                            saved_count = save_search_to_database(properties_data, config, db_manager)
+                            if saved_count > 0:
+                                successful_searches.append(config['search_value'])
+                                total_properties_saved += saved_count
+                            
+                            # Update progress in logger
+                            logger.update_progress(
+                                len(search_configs),
+                                len(successful_searches),
+                                total_properties_found,
+                                total_properties_saved
+                            )
+                    except Exception as e:
+                        logger.error(f"Error processing search '{config['search_value']}': {str(e)}")
+                        continue
+            
+            # Summary
+            logger.info(f"\n{'='*50}")
+            logger.info("DATABASE STORAGE SUMMARY")
+            logger.info(f"{'='*50}")
+            logger.info(f"Total searches processed: {len(search_configs)}")
+            logger.info(f"Successful searches: {len(successful_searches)}")
+            logger.info(f"Total properties found: {total_properties_found}")
+            logger.info(f"Total properties saved: {total_properties_saved}")
+            
+            if successful_searches:
+                logger.info(f"\nSearch terms stored in database:")
+                for search_term in successful_searches:
+                    count = len(db_manager.get_properties_by_search_term(search_term))
+                    logger.info(f"  ✓ {search_term}: {count} properties")
+                
+                # Show database statistics
+                logger.info(f"\nDatabase Statistics:")
+                all_properties = db_manager.get_all_properties()
+                unique_search_terms = db_manager.get_unique_search_terms()
+                logger.info(f"  Total properties in database: {len(all_properties)}")
+                logger.info(f"  Unique search terms: {len(unique_search_terms)}")
+                
+                # Optional: Export to CSV for backup/viewing
+                export_choice = input("\nWould you like to export the database to CSV files? (y/n): ").lower()
+                if export_choice == 'y':
+                    logger.info("\nExporting database to CSV files...")
+                    exported_files = export_database_to_csv(db_manager)
+                    if exported_files:
+                        logger.info(f"\nExported {len(exported_files)} CSV files:")
+                        for filepath in exported_files:
+                            logger.info(f"  ✓ {filepath}")
+            else:
+                logger.warning("No data was saved to the database.")
+            
+            # Performance summary
+            end_time = time.time()
+            total_time = end_time - start_time
+            logger.info(f"\n{'='*50}")
+            logger.info("PERFORMANCE SUMMARY")
+            logger.info(f"{'='*50}")
+            logger.info(f"Total execution time: {total_time:.2f} seconds")
+            if total_properties_saved > 0:
+                logger.info(f"Properties processed per second: {total_properties_saved/total_time:.2f}")
+                logger.info(f"Average time per property: {total_time/total_properties_saved:.2f} seconds")
+            
+            # Close database connection
+            db_manager.close()
+            logger.info("Database connection closed.")
+            
+            # Mark as successfully completed
+            logger.complete_success(
+                len(search_configs),
+                len(successful_searches),
+                total_properties_found,
+                total_properties_saved
+            )
+            
+            # send_agent_messages.main()
+            
+        except Exception as e:
+            logger.complete_failure(f"Unexpected error in main function: {str(e)}")
+            raise
 
 
 

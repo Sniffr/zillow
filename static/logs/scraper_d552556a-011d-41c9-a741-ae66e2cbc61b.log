@@ -1,0 +1,21 @@
+2025-08-27 18:56:04 - INFO - Scraper execution started with ID: d552556a-011d-41c9-a741-ae66e2cbc61b
+2025-08-27 18:56:04 - INFO - Database connection established.
+2025-08-27 18:56:04 - INFO - Data will be stored in: zillow_properties.db
+2025-08-27 18:56:04 - INFO - Using 2 concurrent workers for processing
+2025-08-27 18:56:33 - INFO - 
+==================================================
+2025-08-27 18:56:33 - INFO - DATABASE STORAGE SUMMARY
+2025-08-27 18:56:33 - INFO - ==================================================
+2025-08-27 18:56:33 - INFO - Total searches processed: 2
+2025-08-27 18:56:33 - INFO - Successful searches: 2
+2025-08-27 18:56:33 - INFO - Total properties found: 19
+2025-08-27 18:56:33 - INFO - Total properties saved: 19
+2025-08-27 18:56:33 - INFO - 
+Search terms stored in database:
+2025-08-27 18:56:33 - INFO -   ✓ Single family houses in Los Angeles: 10 properties
+2025-08-27 18:56:33 - INFO -   ✓ Single family houses in San Bernardino: 9 properties
+2025-08-27 18:56:33 - INFO - 
+Database Statistics:
+2025-08-27 18:56:33 - INFO -   Total properties in database: 19
+2025-08-27 18:56:33 - INFO -   Unique search terms: 2
+2025-08-27 18:59:12 - ERROR - Scraper failed: 

@@ -126,6 +126,63 @@ class MessageTemplate(Base):
         return f"<MessageTemplate(id={self.id}, name='{self.name}', is_default={self.is_default})>"
 
 
+class ScraperConfig(Base):
+    """Scraper configuration model"""
+    __tablename__ = 'scraper_configs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Scheduling configuration
+    is_enabled = Column(Integer, default=1)  # 1 for enabled, 0 for disabled
+    schedule_interval_minutes = Column(Integer, default=10)  # Run every X minutes
+    last_scheduled_run = Column(DateTime)
+    next_scheduled_run = Column(DateTime)
+    
+    # Scraper settings
+    max_concurrent_workers = Column(Integer, default=5)
+    timeout_minutes = Column(Integer, default=5)
+    retry_attempts = Column(Integer, default=3)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<ScraperConfig(id={self.id}, enabled={self.is_enabled}, interval={self.schedule_interval_minutes}min)>"
+
+
+class ScraperLog(Base):
+    """Scraper execution log model"""
+    __tablename__ = 'scraper_logs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Execution details
+    execution_id = Column(String(50), nullable=False, index=True)  # Unique ID for each run
+    status = Column(String(50), nullable=False)  # 'running', 'completed', 'failed', 'cancelled'
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime)
+    
+    # Results
+    total_searches = Column(Integer, default=0)
+    successful_searches = Column(Integer, default=0)
+    total_properties = Column(Integer, default=0)
+    properties_saved = Column(Integer, default=0)
+    
+    # Error information
+    error_message = Column(Text)
+    error_details = Column(Text)
+    
+    # Log file path
+    log_file_path = Column(String(500))
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<ScraperLog(id={self.id}, execution_id='{self.execution_id}', status='{self.status}')>"
+
+
 class DatabaseManager:
     """Database manager for handling database operations"""
     
@@ -579,3 +636,142 @@ class DatabaseManager:
             except json.JSONDecodeError:
                 return []
         return []
+
+    # Scraper Configuration Methods
+    def get_scraper_config(self):
+        """
+        Get the scraper configuration (creates default if none exists)
+        
+        Returns:
+            ScraperConfig object
+        """
+        config = self.session.query(ScraperConfig).first()
+        if not config:
+            # Create default configuration
+            config = ScraperConfig()
+            self.session.add(config)
+            self.commit()
+        return config
+    
+    def update_scraper_config(self, updates):
+        """
+        Update scraper configuration
+        
+        Args:
+            updates: Dictionary containing fields to update
+        
+        Returns:
+            True if updated successfully
+        """
+        try:
+            config = self.get_scraper_config()
+            
+            for key, value in updates.items():
+                if hasattr(config, key):
+                    setattr(config, key, value)
+            
+            config.updated_at = datetime.utcnow()
+            self.commit()
+            return True
+        except Exception as e:
+            print(f"Error updating scraper config: {str(e)}")
+            return False
+    
+    def schedule_next_run(self):
+        """
+        Calculate and set the next scheduled run time
+        
+        Returns:
+            DateTime of next run
+        """
+        from datetime import timedelta
+        config = self.get_scraper_config()
+        if config.is_enabled:
+            if config.next_scheduled_run is None:
+                config.next_scheduled_run = datetime.utcnow()
+            else:
+                config.next_scheduled_run = datetime.utcnow() + timedelta(minutes=config.schedule_interval_minutes)
+            config.last_scheduled_run = datetime.utcnow()
+            self.commit()
+            return config.next_scheduled_run
+        return None
+    
+    # Scraper Logging Methods
+    def create_scraper_log(self, execution_id):
+        """
+        Create a new scraper log entry
+        
+        Args:
+            execution_id: Unique identifier for this execution
+        
+        Returns:
+            ScraperLog object
+        """
+        log = ScraperLog(
+            execution_id=execution_id,
+            status='running',
+            start_time=datetime.utcnow()
+        )
+        self.session.add(log)
+        self.commit()
+        return log
+    
+    def update_scraper_log(self, execution_id, updates):
+        """
+        Update a scraper log entry
+        
+        Args:
+            execution_id: The execution ID to update
+            updates: Dictionary containing fields to update
+        
+        Returns:
+            True if updated successfully
+        """
+        try:
+            log = self.session.query(ScraperLog).filter_by(execution_id=execution_id).first()
+            if log:
+                for key, value in updates.items():
+                    if hasattr(log, key):
+                        setattr(log, key, value)
+                self.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Error updating scraper log: {str(e)}")
+            return False
+    
+    def get_scraper_logs(self, limit=50):
+        """
+        Get recent scraper logs
+        
+        Args:
+            limit: Maximum number of logs to return
+        
+        Returns:
+            List of ScraperLog objects
+        """
+        return self.session.query(ScraperLog).order_by(ScraperLog.created_at.desc()).limit(limit).all()
+    
+    def get_scraper_log_by_id(self, execution_id):
+        """
+        Get a specific scraper log by execution ID
+        
+        Args:
+            execution_id: The execution ID to look for
+        
+        Returns:
+            ScraperLog object or None
+        """
+        return self.session.query(ScraperLog).filter_by(execution_id=execution_id).first()
+    
+    def cleanup_old_logs(self, days_to_keep=30):
+        """
+        Clean up old scraper logs
+        
+        Args:
+            days_to_keep: Number of days of logs to keep
+        """
+        from datetime import timedelta
+        cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
+        self.session.query(ScraperLog).filter(ScraperLog.created_at < cutoff_date).delete()
+        self.commit()
