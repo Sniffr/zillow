@@ -39,6 +39,13 @@ zillow/
 ├── requirements.txt                # Python dependencies
 ├── twilio_config.json             # Twilio API configuration
 ├── zillow_properties.db           # SQLite database
+├── config.py                      # Configuration management for different environments
+├── Dockerfile                     # Docker image definition
+├── docker-compose.yml             # Docker Compose orchestration
+├── docker-entrypoint.sh           # Docker container initialization script
+├── docker-setup.sh                # Automated Docker setup script
+├── .dockerignore                  # Docker build exclusions
+├── DOCKER_README.md               # Docker deployment documentation
 ├── static/                        # Static assets
 │   ├── css/style.css             # Custom styles and Bootstrap integration
 │   ├── js/main.js                # JavaScript functionality and AJAX calls
@@ -93,11 +100,30 @@ zillow/
 
 ### Running the Application
 
+#### Option 1: Traditional Installation
 1. **Start the web application**
    ```bash
    python app.py
    ```
    The app will be available at `http://localhost:5001`
+
+#### Option 2: Docker Deployment (Recommended)
+1. **Quick setup with Docker**
+   ```bash
+   ./docker-setup.sh
+   ```
+   This script will automatically set up and start the application using Docker.
+
+2. **Manual Docker setup**
+   ```bash
+   # Build and start with Docker Compose
+   docker-compose up --build -d
+   
+   # Access the application
+   open http://localhost:5001
+   ```
+
+   For detailed Docker instructions, see [DOCKER_README.md](DOCKER_README.md).
 
 2. **Access the dashboard**
    - Open your browser and navigate to `http://localhost:5001`

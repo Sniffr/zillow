@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  zillow-app:
+    build: .
+    container_name: zillow-property-manager
+    ports:
+      - "5001:5001"
+    volumes:
+      # Persist database
+      - ./data:/app/data
+      # Persist logs
+      - ./logs:/app/logs
+      # Persist CSV exports
+      - ./csv_exports:/app/csv_exports
+      # Persist static exports
+      - ./static/exports:/app/static/exports
+      # Persist static logs
+      - ./static/logs:/app/static/logs
+      # Mount config files
+      - ./twilio_config.json:/app/twilio_config.json:ro
+      - ./scraper_schedule.json:/app/scraper_schedule.json:ro
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - zillow-network
+
+networks:
+  zillow-network:
+    driver: bridge
+
+volumes:
+  data:

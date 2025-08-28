@@ -129,13 +129,26 @@ class MessageTemplate(Base):
 class DatabaseManager:
     """Database manager for handling database operations"""
     
-    def __init__(self, database_url='sqlite:///zillow_properties.db'):
+    def __init__(self, database_url=None):
         """
         Initialize database connection
         
         Args:
             database_url: Database connection string (defaults to SQLite)
         """
+        if database_url is None:
+            # Try to import config, fallback to default if not available
+            try:
+                from config import config
+                import os
+                env = os.environ.get('FLASK_ENV', 'production')
+                if env == 'docker':
+                    database_url = config['docker'].DATABASE_URL
+                else:
+                    database_url = config['default'].DATABASE_URL
+            except ImportError:
+                database_url = 'sqlite:///zillow_properties.db'
+        
         self.engine = create_engine(database_url, echo=False)
         Base.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)

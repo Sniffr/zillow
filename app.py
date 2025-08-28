@@ -12,8 +12,25 @@ from datetime import datetime, timedelta
 import pandas as pd
 import schedule
 
+# Import configuration
+try:
+    from config import config
+    import os
+    env = os.environ.get('FLASK_ENV', 'production')
+    if env == 'docker':
+        Config = config['docker']
+    else:
+        Config = config['default']
+except ImportError:
+    # Fallback configuration
+    class Config:
+        SECRET_KEY = 'zillow_property_manager_secret_key_2024'
+        DEBUG = False
+        HOST = '0.0.0.0'
+        PORT = 5001
+
 app = Flask(__name__)
-app.secret_key = 'zillow_property_manager_secret_key_2024'
+app.secret_key = Config.SECRET_KEY
 
 # Global variable to track scraper status
 scraper_status_data = {
@@ -1077,4 +1094,4 @@ def api_scheduler_status():
 if __name__ == '__main__':
     # Initialize the app before running
     initialize_app()
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=Config.DEBUG, host=Config.HOST, port=Config.PORT)
