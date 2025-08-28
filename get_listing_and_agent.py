@@ -6,7 +6,6 @@ import time
 import random
 import logging
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 from database_models import DatabaseManager, Property
 from sqlalchemy.exc import SQLAlchemyError
@@ -140,7 +139,7 @@ def process_search_config(config, proxy_url):
         # Create a list to store all property data for this search
         properties_data = []
         
-        # Process properties concurrently for better performance
+        # Process properties sequentially instead of concurrently
         @retry_with_backoff(max_retries=RETRY_CONFIG['property_retries'], base_delay=RETRY_CONFIG['property_base_delay'], 
                            max_delay=RETRY_CONFIG['property_max_delay'], backoff_factor=RETRY_CONFIG['property_backoff_factor'])
         def process_property(property_info):
@@ -169,21 +168,21 @@ def process_search_config(config, proxy_url):
                 logger.error(f"Error processing property {property_info.get('address', 'unknown')}: {str(e)}")
                 return None
         
-        # Process properties concurrently (limit to 10 for testing, remove limit for production)
+        # Process properties sequentially (limit to 10 for testing, remove limit for production)
         property_limit = min(10, len(map_result))
-        logger.info(f"Processing {property_limit} properties concurrently for '{config['search_value']}'")
+        logger.info(f"Processing {property_limit} properties sequentially for '{config['search_value']}'")
         
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future_to_property = {executor.submit(process_property, map_result[i]): i for i in range(property_limit)}
-            
-            for future in as_completed(future_to_property):
-                try:
-                    property_dict = future.result()
-                    if property_dict:
-                        properties_data.append(property_dict)
-                except Exception as e:
-                    logger.error(f"Error processing property: {str(e)}")
-                    continue
+        for i in range(property_limit):
+            try:
+                property_dict = process_property(map_result[i])
+                if property_dict:
+                    properties_data.append(property_dict)
+                    logger.info(f"Processed property {i+1}/{property_limit}: {map_result[i].get('address', 'unknown')}")
+                else:
+                    logger.warning(f"Failed to process property {i+1}/{property_limit}: {map_result[i].get('address', 'unknown')}")
+            except Exception as e:
+                logger.error(f"Error processing property {i+1}/{property_limit}: {str(e)}")
+                continue
         
         logger.info(f"Successfully processed {len(properties_data)} properties for '{config['search_value']}'")
         return properties_data
@@ -290,32 +289,37 @@ def main():
         return
     
     # Proxy configuration
+    # proxy_url = pyzill.parse_proxy("76cc06db4f59a17e.shg.na.pyproxy.io", "16666",
+    #                                "ASDAr32-zone-resi-region-us", "Fzsdf23")
     proxy_url = pyzill.parse_proxy("76cc06db4f59a17e.shg.na.pyproxy.io", "16666",
-                                   "ASDAr32-zone-resi-region-us", "Fzsdf23")
+                                    "23Gang-zone-resi-region-us", "iQ2000")
+
+    #
+    # proxy_url = pyzill.parse_proxy("p.webshare.io", "80",
+    #                                "usvbdohd-US-rotate", "b3c5398c18k1")
+    # proxy_url = "http://23Gang-zone-resi-region-us:iQ2000:76cc06db4f59a17e.shg.na.pyproxy.io:16666"
     logger.info("Proxy configuration loaded")
     
-    # Process each search configuration separately with concurrent processing
+    # Process each search configuration sequentially
     successful_searches = []
     total_properties_saved = 0
     
-    # Optimize thread count based on number of configs and system capabilities
-    max_workers = min(5, len(search_configs), 10)  # Cap at 10 to avoid overwhelming the API
-    logger.info(f"Using {max_workers} concurrent workers for processing")
+    logger.info(f"Processing {len(search_configs)} search configurations sequentially")
     
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_config = {executor.submit(process_search_with_retry, config, proxy_url): config for config in search_configs}
-        
-        for future in as_completed(future_to_config):
-            config = future_to_config[future]
-            try:
-                properties_data = future.result()
-                saved_count = save_search_to_database(properties_data, config, db_manager)
-                if saved_count > 0:
-                    successful_searches.append(config['search_value'])
-                    total_properties_saved += saved_count
-            except Exception as e:
-                logger.error(f"Error processing search '{config['search_value']}': {str(e)}")
-                continue
+    for i, config in enumerate(search_configs, 1):
+        logger.info(f"Processing search {i}/{len(search_configs)}: {config['search_value']}")
+        try:
+            properties_data = process_search_with_retry(config, proxy_url)
+            saved_count = save_search_to_database(properties_data, config, db_manager)
+            if saved_count > 0:
+                successful_searches.append(config['search_value'])
+                total_properties_saved += saved_count
+                logger.info(f"✓ Successfully processed search {i}/{len(search_configs)}: {config['search_value']} ({saved_count} properties)")
+            else:
+                logger.warning(f"✗ No properties saved for search {i}/{len(search_configs)}: {config['search_value']}")
+        except Exception as e:
+            logger.error(f"✗ Error processing search {i}/{len(search_configs)} '{config['search_value']}': {str(e)}")
+            continue
     
     # Summary
     logger.info("="*60)
