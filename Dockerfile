@@ -5,7 +5,8 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
+ENV FLASK_ENV=docker
+ENV DATABASE_URL=sqlite:///data/zillow_properties.db
 
 # Set work directory
 WORKDIR /app
@@ -27,11 +28,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Make entrypoint script executable
-RUN chmod +x docker-entrypoint.sh
-
-# Create necessary directories
-RUN mkdir -p logs csv_exports static/exports static/logs data
+# Create necessary directories and set permissions
+RUN mkdir -p /app/data /app/logs /app/csv_exports /app/static/exports /app/static/logs && \
+    chmod 755 /app/data /app/logs /app/csv_exports /app/static/exports /app/static/logs
 
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash app && \
@@ -44,9 +43,6 @@ EXPOSE 5001
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5001/ || exit 1
-
-# Set entrypoint
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # Run the application
 CMD ["python", "app.py"]
